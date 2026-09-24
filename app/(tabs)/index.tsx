@@ -1,0 +1,189 @@
+import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { FriendData, HomeData, Person } from '../../shared/api';
+import { localDate } from '../../shared/catalog';
+import { bannerFor, crewInviteMessage } from '../../shared/copy';
+import { api, inviteLink, useLoad } from '../../src/api';
+import { BubbleField } from '../../src/bubbles';
+import { ChallengeCard } from '../../src/components/ChallengeCard';
+import { Glass } from '../../src/glass';
+import { Enter } from '../../src/motion';
+import { scheduleReminders } from '../../src/notifications';
+import { canPickContacts, sendText, textContact } from '../../src/share';
+import { colors, radius, space } from '../../src/theme';
+import { Avatar, Button, Card, ErrorText, Icon, Sheet, T, useTabBarSpace } from '../../src/ui';
+
+function greeting() {
+  const h = new Date().getHours();
+  return h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening';
+}
+
+export default function Home() {
+  const { data, error, reload } = useLoad<HomeData>('/home');
+  const [friend, setFriend] = useState<Person | null>(null);
+  const [adding, setAdding] = useState(false);
+  const top = useSafeAreaInsets().top;
+  const tabSpace = useTabBarSpace();
+
+  const firstFriend = data?.crew[0]?.name ?? null;
+  useEffect(() => {
+    if (data) scheduleReminders({ enabled: data.user.notifications, time: data.user.workoutTime, friendName: firstFriend });
+    // Only reschedule when something the reminder depends on changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.user.notifications, data?.user.workoutTime, firstFriend]);
+
+  return (
+    <View style={styles.screen}>
+      <BubbleField scene="home" />
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: top + space.gap }]}>
+        {data ? (
+          <>
+            <Enter index={0}>
+              <T variant="display">{greeting()}, {data.user.name}.</T>
+            </Enter>
+
+            <Enter index={1}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.crewScroll} contentContainerStyle={styles.crewRow}>
+              {data.crew.map((f) => (
+                <Pressable key={f.id} accessibilityRole="button" accessibilityLabel={f.loggedToday ? `${f.name}, logged today` : f.name} onPress={() => setFriend(f)} style={styles.crewItem}>
+                  <Avatar person={f} size={56} dot={f.loggedToday} />
+                  <T variant="small" color={colors.ink} numberOfLines={1}>{f.name}</T>
+                </Pressable>
+              ))}
+              <Pressable accessibilityRole="button" accessibilityLabel="Add to your crew" onPress={() => setAdding(true)} style={styles.crewItem}>
+                <View style={styles.addCircle}>
+                  <Icon name="plus" size={24} color={colors.ink} />
+                </View>
+                <T variant="small" color={colors.ink}>Add</T>
+              </Pressable>
+            </ScrollView>
+            </Enter>
+
+            <Enter index={2} fade={false}>
+              <Glass radius={radius.card} tintColor={colors.signalTint} style={styles.banner}>
+                <T>{bannerFor(localDate())}</T>
+              </Glass>
+            </Enter>
+
+            <View style={{ gap: space.gap }}>
+              <Enter index={3}>
+                <T variant="title">Your challenges</T>
+              </Enter>
+              {data.challenges.length ? (
+                data.challenges.map((c, i) => (
+                  <Enter key={c.id} index={4 + i}>
+                    <ChallengeCard card={c} />
+                  </Enter>
+                ))
+              ) : (
+                <Enter index={4}>
+                  <Card>
+                    <T>No challenges yet. Start one or join one below.</T>
+                  </Card>
+                </Enter>
+              )}
+            </View>
+          </>
+        ) : error ? (
+          <Card style={{ gap: space.gap }}>
+            <T>{error}</T>
+            <Button variant="outline" title="Try again" onPress={reload} />
+          </Card>
+        ) : null}
+      </ScrollView>
+
+      <View style={[styles.actions, { paddingBottom: tabSpace + space.gap }]}>
+        <Button title="Start a challenge" onPress={() => router.push('/create')} />
+        <Button variant="outline" title="Join a challenge" onPress={() => router.push('/join')} />
+      </View>
+
+      <FriendSheet friend={friend} onClose={() => setFriend(null)} />
+      <AddCrewSheet visible={adding} onClose={() => setAdding(false)} />
+    </View>
+  );
+}
+
+function FriendSheet({ friend, onClose }: { friend: Person | null; onClose: () => void }) {
+  const [info, setInfo] = useState<FriendData | null>(null);
+  useEffect(() => {
+    setInfo(null);
+    if (friend) api<FriendData>(`/crew/${friend.id}`).then(setInfo, () => {});
+  }, [friend]);
+
+  return (
+    <Sheet visible={!!friend} onClose={onClose}>
+      {friend ? (
+        <View style={styles.friendTop}>
+          <Avatar person={friend} size={56} />
+          <T variant="title">{friend.name}</T>
+        </View>
+      ) : null}
+      <View style={styles.friendRow}>
+        <T color={colors.stone}>Challenges completed</T>
+        <T variant="label">{info ? info.completed : ' '}</T>
+      </View>
+      <View style={styles.friendRow}>
+        <T color={colors.stone}>Biggest win</T>
+        <T variant="label" style={{ flexShrink: 1, textAlign: 'right' }}>{info ? info.biggestWin ?? 'No wins yet' : ' '}</T>
+      </View>
+    </Sheet>
+  );
+}
+
+function AddCrewSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const send = async (how: 'text' | 'contacts') => {
+    setError(null);
+    try {
+      const { token } = await api<{ token: string }>('/crew/invite', { body: {} });
+      const message = crewInviteMessage(inviteLink(token));
+      const outcome = how === 'text' ? await sendText(message) : await textContact(message);
+      if (outcome === 'sent') onClose();
+      if (outcome === 'copied') setNote('Link copied. Paste it into a text.');
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  return (
+    <Sheet
+      visible={visible}
+      onClose={() => {
+        setNote(null);
+        onClose();
+      }}
+      title="Add to your crew"
+    >
+      <Button title="Text a link" onPress={() => send('text')} />
+      {canPickContacts ? <Button variant="outline" title="Find from contacts" onPress={() => send('contacts')} /> : null}
+      {note ? <T variant="label">{note}</T> : null}
+      <ErrorText>{error}</ErrorText>
+    </Sheet>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.paper },
+  banner: { padding: space.card },
+  content: { paddingHorizontal: space.screen, paddingBottom: space.gap, gap: space.gap * 2 },
+  crewScroll: { marginHorizontal: -space.screen, flexGrow: 0 },
+  crewRow: { paddingHorizontal: space.screen, gap: space.gap },
+  crewItem: { alignItems: 'center', gap: 4, width: 64 },
+  addCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actions: { paddingHorizontal: space.screen, paddingTop: space.gap, gap: space.gap },
+  friendTop: { flexDirection: 'row', alignItems: 'center', gap: space.gap },
+  friendRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.gap, minHeight: 32 },
+});
