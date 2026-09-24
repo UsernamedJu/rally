@@ -7,7 +7,7 @@ import {
   type StyleProp, type TextInputProps, type ViewStyle,
 } from 'react-native';
 import { nativeDriver, spring, springs } from './motion';
-import { colors, fonts, radius, space } from './theme';
+import { MAX_FONT_SCALE, colors, fonts, radius, space } from './theme';
 import { Pressy, T } from './ui';
 
 // ---------- chips ----------
@@ -102,7 +102,7 @@ export function TextField(props: TextInputProps) {
     <TextInput
       placeholderTextColor={colors.stone}
       returnKeyType="done"
-      maxFontSizeMultiplier={1.4}
+      maxFontSizeMultiplier={MAX_FONT_SCALE}
       {...props}
       onFocus={(e) => {
         setFocused(true);

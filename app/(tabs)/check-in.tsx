@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CheckinData } from '../../shared/api';
 import { localDate, longDate } from '../../shared/catalog';
 import { useLoad } from '../../src/api';
-import { BubbleField } from '../../src/bubbles';
+import { Backdrop } from '../../src/backdrop';
 import { LogFlow } from '../../src/components/LogFlow';
 import { PulseRing } from '../../src/motion';
 import { colors, space } from '../../src/theme';
@@ -23,7 +23,7 @@ export default function CheckIn() {
   if (data.checkedIn && !holding) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.paper, paddingTop: top + space.card, paddingHorizontal: space.screen }}>
-        <BubbleField scene="checkin" />
+        <Backdrop scene="checkin" />
         <T variant="small">{longDate(localDate())}</T>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.gap * 2, paddingBottom: tabSpace }}>
           <PulseRing size={120}>
@@ -40,7 +40,7 @@ export default function CheckIn() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.paper, paddingTop: top }}>
-      <BubbleField scene="checkin" />
+      <Backdrop scene="checkin" />
       <LogFlow
         key={round}
         data={data}

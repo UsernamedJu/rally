@@ -20,7 +20,7 @@ export default function RootLayout() {
   const signedIn = !!token;
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
+      <StatusBar style="auto" />
       <Stack
         screenOptions={{
           headerShown: false,
@@ -38,8 +38,8 @@ export default function RootLayout() {
           <Stack.Screen name="join" />
           <Stack.Screen name="settings" />
           {/* A real iOS modal card: drag it down to dismiss, let go early and it springs back. */}
-          <Stack.Screen name="create" options={{ presentation: 'modal', gestureEnabled: true }} />
-          <Stack.Screen name="log/[id]" options={{ presentation: 'modal', gestureEnabled: true }} />
+          <Stack.Screen name="create" options={{ presentation: 'modal', gestureEnabled: true, contentStyle: { backgroundColor: colors.paperRaised } }} />
+          <Stack.Screen name="log/[id]" options={{ presentation: 'modal', gestureEnabled: true, contentStyle: { backgroundColor: colors.paperRaised } }} />
         </Stack.Protected>
         <Stack.Protected guard={!signedIn}>
           <Stack.Screen name="welcome" options={{ animation: 'fade' }} />

@@ -6,9 +6,9 @@ import type { FriendData, HomeData, Person } from '../../shared/api';
 import { localDate } from '../../shared/catalog';
 import { bannerFor, crewInviteMessage } from '../../shared/copy';
 import { api, inviteLink, useLoad } from '../../src/api';
-import { BubbleField } from '../../src/bubbles';
+import { Backdrop } from '../../src/backdrop';
 import { ChallengeCard } from '../../src/components/ChallengeCard';
-import { Glass } from '../../src/glass';
+import { useLargeText } from '../../src/appearance';
 import { Enter } from '../../src/motion';
 import { scheduleReminders } from '../../src/notifications';
 import { canPickContacts, sendText, textContact } from '../../src/share';
@@ -26,6 +26,7 @@ export default function Home() {
   const [adding, setAdding] = useState(false);
   const top = useSafeAreaInsets().top;
   const tabSpace = useTabBarSpace();
+  const largeText = useLargeText();
 
   const firstFriend = data?.crew[0]?.name ?? null;
   useEffect(() => {
@@ -34,9 +35,16 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.user.notifications, data?.user.workoutTime, firstFriend]);
 
+  const actions = (
+    <>
+      <Button title="Start a challenge" onPress={() => router.push('/create')} />
+      <Button variant="outline" title="Join a challenge" onPress={() => router.push('/join')} />
+    </>
+  );
+
   return (
     <View style={styles.screen}>
-      <BubbleField scene="home" />
+      <Backdrop scene="home" />
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: top + space.gap }]}>
         {data ? (
           <>
@@ -61,10 +69,10 @@ export default function Home() {
             </ScrollView>
             </Enter>
 
-            <Enter index={2} fade={false}>
-              <Glass radius={radius.card} tintColor={colors.signalTint} style={styles.banner}>
+            <Enter index={2}>
+              <Card tint style={styles.banner}>
                 <T>{bannerFor(localDate())}</T>
-              </Glass>
+              </Card>
             </Enter>
 
             <View style={{ gap: space.gap }}>
@@ -92,12 +100,12 @@ export default function Home() {
             <Button variant="outline" title="Try again" onPress={reload} />
           </Card>
         ) : null}
+        {largeText && data ? <View style={{ gap: space.gap, paddingBottom: tabSpace }}>{actions}</View> : null}
       </ScrollView>
 
-      <View style={[styles.actions, { paddingBottom: tabSpace + space.gap }]}>
-        <Button title="Start a challenge" onPress={() => router.push('/create')} />
-        <Button variant="outline" title="Join a challenge" onPress={() => router.push('/join')} />
-      </View>
+      {/* Pinned above the tab bar so they are always in reach; at large text sizes they would fill the
+          screen, so they scroll with the page instead. */}
+      {largeText ? null : <View style={[styles.actions, { paddingBottom: tabSpace + space.gap }]}>{actions}</View>}
 
       <FriendSheet friend={friend} onClose={() => setFriend(null)} />
       <AddCrewSheet visible={adding} onClose={() => setAdding(false)} />

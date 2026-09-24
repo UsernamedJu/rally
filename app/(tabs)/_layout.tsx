@@ -5,6 +5,7 @@ import type { ComponentProps } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { alpha, usePalette } from '../../src/appearance';
 import { Glass, useReduceTransparency } from '../../src/glass';
 import { spring, springs, useReducedMotion } from '../../src/motion';
 import { TAB_BAR_HEIGHT, TAB_BAR_INSET, colors, radius } from '../../src/theme';
@@ -51,6 +52,7 @@ function PillTabBar({ state, navigation }: TabBarProps) {
   const bottom = Math.max(useSafeAreaInsets().bottom, TAB_BAR_INSET);
   const reduce = useReducedMotion();
   const solid = useReduceTransparency();
+  const pal = usePalette();
   const routes = state.routes.filter((r) => TABS[r.name]);
   const count = routes.length;
 
@@ -140,7 +142,7 @@ function PillTabBar({ state, navigation }: TabBarProps) {
           so the control stays legible. A soft fade of the page colour under the bar does that. */}
       <LinearGradient
         pointerEvents="none"
-        colors={['rgba(247,245,241,0)', 'rgba(247,245,241,0.94)']}
+        colors={[alpha(pal.paper, 0), alpha(pal.paper, 0.94)]}
         locations={[0, 0.6]}
         style={[styles.edge, { height: TAB_BAR_HEIGHT + bottom + 36 }]}
       />
@@ -153,7 +155,8 @@ function PillTabBar({ state, navigation }: TabBarProps) {
               styles.lens,
               {
                 width: tabW,
-                backgroundColor: solid ? colors.signalTint : 'rgba(232,52,43,0.10)',
+                backgroundColor: solid ? colors.signalTint : alpha(pal.accent, 0.14),
+                borderColor: alpha(pal.accent, 0.3),
                 transform: [
                   { translateX: pos.interpolate({ inputRange: [0, Math.max(1, count - 1)], outputRange: [0, Math.max(1, count - 1) * tabW] }) },
                   { scaleX: squash },
@@ -208,9 +211,10 @@ function TabButton({ tab, focused, onPress, onPressIn, onPressOut }: {
       onPressOut={onPressOut}
     >
       <Animated.View style={{ transform: [{ scale: bounce }] }}>
-        <Icon name={tab.icon} size={24} color={focused ? colors.signal : colors.stone} filled={focused} effect={focused && !reduce ? 'bounce' : null} />
+        <Icon name={tab.icon} size={24} color={focused ? colors.accent : colors.stone} filled={focused} effect={focused && !reduce ? 'bounce' : null} />
       </Animated.View>
-      <T variant="small" color={focused ? colors.ink : colors.stone}>{tab.label}</T>
+      {/* The bar is a fixed height, so its labels stop growing earlier than body text does. */}
+      <T variant="small" maxFontSizeMultiplier={1.2} color={focused ? colors.ink : colors.stone}>{tab.label}</T>
     </Pressable>
   );
 }
@@ -231,7 +235,6 @@ const styles = StyleSheet.create({
     bottom: LENS_INSET,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(232,52,43,0.2)',
   },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
 });

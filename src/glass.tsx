@@ -108,8 +108,8 @@ export function Glass({ children, style, radius = 24, effect = 'regular', tintCo
         glassEffectStyle={effect}
         tintColor={tintColor}
         isInteractive={interactive}
-        // The app is light only, so pin the material instead of flipping with the system.
-        colorScheme="light"
+        // Follows the system, so the material flips with Dark Mode along with everything else.
+        colorScheme="auto"
         style={[{ borderRadius: radius }, style]}
       >
         {children}
@@ -118,7 +118,7 @@ export function Glass({ children, style, radius = 24, effect = 'regular', tintCo
   }
 
   return (
-    <BlurView intensity={50} tint="light" style={[{ borderRadius: radius, overflow: 'hidden' }, style]}>
+    <BlurView intensity={50} tint="systemMaterial" style={[{ borderRadius: radius, overflow: 'hidden' }, style]}>
       {tintColor ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: tintColor, opacity: 0.55 }]} /> : null}
       <View pointerEvents="none" style={styles.sheen} />
       {children}

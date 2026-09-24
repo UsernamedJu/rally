@@ -4,7 +4,7 @@ import { Image, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { biometricsAvailable, biometricsLabel, unlockWithBiometrics } from '../src/biometrics';
 import { forgetAccount, getRememberedAccount, setSession, type LockedAccount } from '../src/api';
-import { BubbleField } from '../src/bubbles';
+import { Backdrop } from '../src/backdrop';
 import { space } from '../src/theme';
 import { Avatar, Button, ErrorText, T, TextLink } from '../src/ui';
 
@@ -45,7 +45,7 @@ export default function Welcome() {
   if (remembered) {
     return (
       <View style={{ flex: 1, paddingTop: top + space.screen * 2, paddingHorizontal: space.screen }}>
-        <BubbleField scene="home" />
+        <Backdrop scene="welcome" />
         <View style={{ flex: 1, alignItems: 'center', gap: space.gap, justifyContent: 'center' }}>
           <Avatar person={remembered} size={72} />
           <T variant="display" center>Welcome back, {remembered.name}.</T>
@@ -71,7 +71,7 @@ export default function Welcome() {
 
   return (
     <View style={{ flex: 1, paddingTop: top + space.screen * 2, paddingHorizontal: space.screen }}>
-      <BubbleField scene="home" />
+      <Backdrop scene="welcome" />
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.gap }}>
         <Image source={require('../assets/icon.png')} style={{ width: 96, height: 96, borderRadius: 24 }} />
         <T variant="display" center>Rally</T>

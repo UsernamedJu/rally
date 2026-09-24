@@ -15,7 +15,7 @@ export default function LogScreen() {
   const close = () => router.back();
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.paper }}>
+    <View style={{ flex: 1, backgroundColor: colors.paperRaised }}>
       <Header close={close} />
       {data ? <LogFlow data={data} preset={id} bottomSpace={bottom} onFinish={close} onNotToday={close} /> : null}
     </View>

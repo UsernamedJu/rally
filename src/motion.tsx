@@ -125,7 +125,7 @@ const PIECES = Array.from({ length: 28 }, (_, i) => ({
   lift: 60 + Math.random() * 80,
   spin: (Math.random() - 0.5) * 720,
   size: 6 + Math.random() * 6,
-  color: [colors.signal, colors.ink, colors.signal, colors.stone][i % 4],
+  color: [colors.accent, colors.ink, colors.accent, colors.stone][i % 4],
 }));
 
 /** A single burst the first time `key` is seen with `active` true. Never again after that. */
@@ -204,7 +204,7 @@ export function PulseRing({ size, children }: { size: number; children: ReactNod
             width: size,
             height: size,
             borderRadius: size / 2,
-            backgroundColor: colors.signal,
+            backgroundColor: colors.accent,
             opacity: t.interpolate({ inputRange: [0, 1], outputRange: [0.22, 0] }),
             transform: [{ scale: t.interpolate({ inputRange: [0, 1], outputRange: [1, 1.45] }) }],
           }}

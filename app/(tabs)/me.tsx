@@ -3,7 +3,8 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { MeData, TrackedCard } from '../../shared/api';
 import { useLoad } from '../../src/api';
-import { BubbleField } from '../../src/bubbles';
+import { Backdrop } from '../../src/backdrop';
+import { useLargeText } from '../../src/appearance';
 import { Enter, PulseRing } from '../../src/motion';
 import { colors, radius, space } from '../../src/theme';
 import { Avatar, Button, Card, IconButton, T, useTabBarSpace } from '../../src/ui';
@@ -12,10 +13,11 @@ export default function Me() {
   const { data, error, reload } = useLoad<MeData>('/me/summary');
   const top = useSafeAreaInsets().top;
   const tabSpace = useTabBarSpace();
+  const largeText = useLargeText();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.paper }}>
-      <BubbleField scene="me" />
+      <Backdrop scene="me" />
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: top + 8, paddingBottom: tabSpace + space.screen }]}>
         {!data ? (
           error ? (
@@ -45,10 +47,10 @@ export default function Me() {
               )}
             </Enter>
 
-            <Enter index={2} style={styles.stats}>
-              <Stat value={data.completed} label="Challenges completed" />
-              <Stat value={data.won} label="Challenges won" />
-              <Stat value={data.longestStreak} label="Longest streak" />
+            <Enter index={2} style={largeText ? styles.statsColumn : styles.stats}>
+              <Stat stacked={largeText} value={data.completed} label="Challenges completed" />
+              <Stat stacked={largeText} value={data.won} label="Challenges won" />
+              <Stat stacked={largeText} value={data.longestStreak} label="Longest streak" />
             </Enter>
 
             <Enter index={3} style={{ gap: space.gap }}>
@@ -95,11 +97,11 @@ export default function Me() {
   );
 }
 
-function Stat({ value, label }: { value: number; label: string }) {
+function Stat({ value, label, stacked }: { value: number; label: string; stacked?: boolean }) {
   return (
-    <View style={styles.stat}>
-      <T variant="title" center>{value}</T>
-      <T variant="small" center>{label}</T>
+    <View style={[styles.stat, stacked ? styles.statWide : null]}>
+      <T variant="title" center={!stacked}>{value}</T>
+      <T variant="small" center={!stacked} style={stacked ? { flexShrink: 1, textAlign: 'right' } : null}>{label}</T>
     </View>
   );
 }
@@ -125,7 +127,7 @@ function TrackedRow({ item }: { item: TrackedCard }) {
                   style={{
                     height,
                     borderRadius: radius.pill,
-                    backgroundColor: isToday ? colors.signal : d ? colors.ink : colors.line,
+                    backgroundColor: isToday ? colors.accent : d ? colors.ink : colors.track,
                   }}
                 />
               </View>
@@ -143,6 +145,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: space.gap },
   hero: { alignItems: 'center', paddingVertical: space.gap },
   stats: { flexDirection: 'row', gap: 8 },
+  statsColumn: { gap: 8 },
+  statWide: { flex: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.gap, paddingHorizontal: space.card },
   stat: { flex: 1, backgroundColor: colors.card, borderRadius: radius.card, paddingVertical: 16, paddingHorizontal: 8, gap: 2 },
   tracked: { flexDirection: 'row', alignItems: 'center', gap: space.gap },
   bars: { flexDirection: 'row', gap: 6 },

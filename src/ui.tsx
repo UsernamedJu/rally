@@ -6,13 +6,14 @@ import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from
 import {
   ActivityIndicator, Animated, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView,
   StyleSheet, Text, View, useWindowDimensions,
-  type GestureResponderEvent, type PressableProps, type StyleProp, type TextProps, type ViewStyle,
+  type ColorValue, type GestureResponderEvent, type PressableProps, type StyleProp, type TextProps, type ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { type BubbleScene, BubbleField } from './bubbles';
+import { useScheme } from './appearance';
+import { type BackdropScene, Backdrop } from './backdrop';
 import { Glass } from './glass';
 import { nativeDriver, spring, springs, useReducedMotion, type SpringConfig } from './motion';
-import { AVATAR_TONES, TAB_BAR_HEIGHT, TAB_BAR_INSET, colors, radius, space, type } from './theme';
+import { AVATAR_TONES, MAX_FONT_SCALE, TAB_BAR_HEIGHT, TAB_BAR_INSET, colors, radius, space, type } from './theme';
 import type { Person } from '../shared/api';
 
 export type IconName = ComponentProps<typeof Feather>['name'];
@@ -39,7 +40,7 @@ const SF: Partial<Record<IconName, { base: string; filled?: string }>> = {
 type IconProps = {
   name: IconName;
   size?: number;
-  color?: string;
+  color?: ColorValue;
   /** Selected-state glyph, where the symbol has one. */
   filled?: boolean;
   /** A native symbol effect, played when this turns on (for example when a tab becomes selected). */
@@ -64,12 +65,12 @@ export function Icon({ name, size = 24, color = colors.ink, filled, effect }: Ic
 
 // ---------- text ----------
 
-type TProps = TextProps & { variant?: keyof typeof type; color?: string; center?: boolean };
+type TProps = TextProps & { variant?: keyof typeof type; color?: ColorValue; center?: boolean };
 
 export function T({ variant = 'body', color, center, style, ...rest }: TProps) {
   return (
     <Text
-      maxFontSizeMultiplier={1.4}
+      maxFontSizeMultiplier={MAX_FONT_SCALE}
       {...rest}
       style={[type[variant], color ? { color } : null, center ? { textAlign: 'center' } : null, style]}
     />
@@ -199,7 +200,7 @@ export function Avatar({ person, size = 48, dot }: { person: Pick<Person, 'name'
       {dot ? (
         <View
           accessibilityLabel="Logged today"
-          style={{ position: 'absolute', right: 0, bottom: 0, width: dotSize, height: dotSize, borderRadius: dotSize / 2, backgroundColor: colors.signal, borderWidth: 2, borderColor: colors.paper }}
+          style={{ position: 'absolute', right: 0, bottom: 0, width: dotSize, height: dotSize, borderRadius: dotSize / 2, backgroundColor: colors.accent, borderWidth: 2, borderColor: colors.paper }}
         />
       ) : null}
     </View>
@@ -242,7 +243,7 @@ export function ProgressBar({ fraction, tone = 'signal', height = 10, animKey, f
       accessibilityRole="progressbar"
       accessibilityValue={{ min: 0, max: 100, now: Math.round(target * 100) }}
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-      style={{ height, borderRadius: height / 2, backgroundColor: colors.line, overflow: 'hidden' }}
+      style={{ height, borderRadius: height / 2, backgroundColor: colors.track, overflow: 'hidden' }}
     >
       {width > 0 ? (
         <Animated.View
@@ -250,7 +251,7 @@ export function ProgressBar({ fraction, tone = 'signal', height = 10, animKey, f
             width,
             height,
             borderRadius: height / 2,
-            backgroundColor: tone === 'ink' ? colors.ink : colors.signal,
+            backgroundColor: tone === 'ink' ? colors.ink : colors.accent,
             transform: [{ translateX: value.interpolate({ inputRange: [0, 1], outputRange: [-width, 0] }) }],
           }}
         />
@@ -278,13 +279,15 @@ export function Header({ onBack, right, close }: { onBack?: () => void; right?: 
   );
 }
 
-export function Page({ children, footer, header, contentStyle, bubbles }: {
-  children: ReactNode; footer?: ReactNode; header?: ReactNode; contentStyle?: StyleProp<ViewStyle>; bubbles?: BubbleScene;
+export function Page({ children, footer, header, contentStyle, backdrop, raised }: {
+  children: ReactNode; footer?: ReactNode; header?: ReactNode; contentStyle?: StyleProp<ViewStyle>; backdrop?: BackdropScene;
+  /** For screens presented as a modal card: Apple's elevated background, so it advances over the page behind. */
+  raised?: boolean;
 }) {
   const bottom = useSafeAreaInsets().bottom;
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.page}>
-      {bubbles ? <BubbleField scene={bubbles} /> : null}
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.page, raised ? { backgroundColor: colors.paperRaised } : null]}>
+      {backdrop ? <Backdrop scene={backdrop} /> : null}
       {header}
       <ScrollView
         contentContainerStyle={[styles.pageContent, contentStyle]}
@@ -308,6 +311,7 @@ export function Sheet({ visible, onClose, title, children }: { visible: boolean;
   const { height: screenH } = useWindowDimensions();
   const bottom = useSafeAreaInsets().bottom;
   const reduce = useReducedMotion();
+  const scheme = useScheme();
   const [mounted, setMounted] = useState(visible);
   const y = useRef(new Animated.Value(screenH)).current;
   const current = useRef(screenH);
@@ -388,6 +392,16 @@ export function Sheet({ visible, onClose, title, children }: { visible: boolean;
 
   const dim = y.interpolate({ inputRange: [0, screenH * 0.55], outputRange: [1, 0], extrapolate: 'clamp' });
 
+  // At large text sizes a sheet's content can be taller than the screen. It is then capped and the
+  // content scrolls, and dismissing by dragging moves to just the grabber and title so a scroll
+  // and a dismiss can never be the same gesture.
+  const [viewport, setViewport] = useState(0);
+  const [content, setContent] = useState(0);
+  // Derived from both measurements, because either can arrive first.
+  const overflow = viewport > 0 && content > viewport + 1;
+  const dragProps = { onTouchStart, onTouchMove, onTouchEnd: release, onTouchCancel: release };
+  const maxHeight = screenH * 0.88 - Math.max(bottom, 8);
+
   return (
     <Modal visible={mounted} transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.sheetHost}>
@@ -399,16 +413,26 @@ export function Sheet({ visible, onClose, title, children }: { visible: boolean;
           accessibilityViewIsModal
           // VoiceOver's two-finger scrub. The scrim is hidden from it by the modal flag above.
           onAccessibilityEscape={onClose}
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={release}
-          onTouchCancel={release}
+          {...(overflow ? null : dragProps)}
           style={[styles.sheetWrap, { marginBottom: Math.max(bottom, 8), transform: [{ translateY: y }] }]}
         >
-          <Glass radius={34} tintColor="rgba(255,255,255,0.35)" style={styles.sheet}>
-            <View style={styles.grabber} />
-            {title ? <T variant="title">{title}</T> : null}
-            {children}
+          <Glass radius={34} tintColor={scheme === 'dark' ? 'rgba(28,26,25,0.4)' : 'rgba(255,255,255,0.35)'} style={[styles.sheet, { maxHeight }]}>
+            <View style={{ gap: space.gap }} {...(overflow ? dragProps : null)}>
+              <View style={styles.grabber} />
+              {title ? <T variant="title">{title}</T> : null}
+            </View>
+            <ScrollView
+              style={styles.sheetScroll}
+              contentContainerStyle={{ gap: space.gap }}
+              scrollEnabled={overflow}
+              bounces={false}
+              showsVerticalScrollIndicator={overflow}
+              keyboardShouldPersistTaps="handled"
+              onLayout={(e) => setViewport(e.nativeEvent.layout.height)}
+              onContentSizeChange={(_, h) => setContent(h)}
+            >
+              {children}
+            </ScrollView>
           </Glass>
         </Animated.View>
       </KeyboardAvoidingView>
@@ -439,9 +463,10 @@ export const styles = StyleSheet.create({
   pageContent: { padding: space.screen, gap: space.gap, paddingBottom: space.screen * 2 },
   footer: { paddingHorizontal: space.screen, paddingTop: space.gap, gap: space.gap },
   iconGlass: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  scrim: { backgroundColor: 'rgba(27,26,25,0.18)' },
+  scrim: { backgroundColor: colors.scrim },
   sheetHost: { flex: 1, justifyContent: 'flex-end' },
   sheetWrap: { marginHorizontal: 8 },
+  sheetScroll: { flexShrink: 1, flexGrow: 0 },
   sheet: { paddingHorizontal: space.screen, paddingTop: 12, paddingBottom: space.screen, gap: space.gap },
-  grabber: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(27,26,25,0.2)', marginBottom: 4 },
+  grabber: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: colors.grabber, marginBottom: 4 },
 });

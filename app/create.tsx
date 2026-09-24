@@ -122,7 +122,7 @@ export default function Create() {
   }
 
   return (
-    <Page header={<StepHeader step={step} onBack={() => setStep(step - 1)} />} footer={footer} contentStyle={{ gap: space.gap * 2 }}>
+    <Page raised header={<StepHeader step={step} onBack={() => setStep(step - 1)} />} footer={footer} contentStyle={{ gap: space.gap * 2 }}>
       <T variant="display">{TITLES[step]}</T>
       {body}
     </Page>
@@ -145,9 +145,9 @@ function StepHeader({ step, onBack }: { step: number; onBack: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, backgroundColor: colors.paper },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 },
   spacer: { width: space.touch },
   dots: { flex: 1, flexDirection: 'row', justifyContent: 'center', gap: 8 },
-  dot: { width: 10, height: 10, borderRadius: radius.pill, backgroundColor: colors.line },
+  dot: { width: 10, height: 10, borderRadius: radius.pill, backgroundColor: colors.track },
   dotOn: { backgroundColor: colors.ink },
 });

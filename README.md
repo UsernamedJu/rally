@@ -72,16 +72,41 @@ in an invite text come from the same function.
 
 ## Apple platform features
 
-Built from Apple's own documentation (Adopting Liquid Glass, Interface fundamentals, Graphics and
-animation, Core experiences, Data management), and checked on an iOS 26.5 simulator.
+Built from Apple's own documentation (Adopting Liquid Glass, the Human Interface Guidelines for Dark
+Mode, Color, Materials and Accessibility, and the Core experiences and Data management overviews),
+and checked on an iOS 26.5 simulator.
 
 **Liquid Glass.** `src/glass.tsx` uses the real `UIGlassEffect` through `expo-glass-effect`, which
-runs in Expo Go. Glass is on the controls layer only (tab bar, sheets, toolbar buttons, and two
-callouts), because Apple says content-layer glass collides with navigation glass. It falls back to a
-frosted blur on older iOS, and to a plain solid surface under Reduce Transparency. Two gotchas that
-cost real time: opacity on a glass view or any parent of one switches the effect off for good (so
-`Enter` takes `fade={false}` around glass), and it also disappears when its screen is detached by a
-push, so `Glass` remounts the native view when its screen regains focus.
+runs in Expo Go. Apple's Materials guidance says glass belongs on the controls and navigation layer
+and that app backgrounds and content use standard materials, so glass is on the tab bar, sheets and
+toolbar buttons only; cards and callouts are plain surfaces. It falls back to a system blur on older
+iOS, and to a solid surface under Reduce Transparency. Two gotchas that cost real time: opacity on a
+glass view or any parent of one switches the effect off for good (`Enter` takes `fade={false}`
+around glass), and it also disappears when its screen is detached by a push, so `Glass` remounts
+the native view when its screen regains focus.
+
+**Dark Mode.** The app follows the system appearance and offers no switch of its own, which is
+Apple's guidance; it changes live, including Auto at sunset. Every color in `src/theme.ts` is a
+`DynamicColorIOS` defined for light, dark, and an Increase Contrast variant of each, so iOS resolves
+it natively with no re-render. Screens use Apple's base and elevated backgrounds: the page is the
+base, modal cards and sheets are the brighter elevated one. Concrete strings for SVG and gradients
+come from `usePalette()` in `src/appearance.ts`.
+
+**Color and contrast.** Apple's floor is 4.5:1 for text (7:1 preferred for small text) and 3:1 for
+icons and graphics. The original palette failed it (secondary text 4.0:1, the white label on the red
+button 4.24:1), so the tokens were re-derived against measured ratios. `npm run contrast` reads the
+real values out of the source and checks every pair in all four contexts, including text sitting on
+the strongest spot of the background glow. Red is split into `signal` (fills carrying a white label)
+and `accent` (icons and graphics on the page, brighter in dark).
+
+**Background.** `src/backdrop.tsx`: a quiet warm wash and a few hairline rings that echo the ripples
+in the app icon, drawn with SVG radial gradients that fade to fully transparent, so no shape has an
+edge. Glows sit away from the tab bar so controls never rest on colour, and the layer removes itself
+under Increase Contrast and stops drifting under Reduce Motion.
+
+**Text size.** Dynamic Type is supported to 200%, as Apple asks. Rows that no longer fit stack or wrap
+(`useLargeText()`), the Home buttons scroll with the page instead of pinning, and tall sheets cap at
+88% of the screen and scroll.
 
 **Motion.** Everything that responds to a finger is a spring (`src/motion.tsx`), so it can be
 interrupted and reversed mid-flight. The tab bar's selection lens slides between tabs and can be
@@ -105,14 +130,25 @@ Association file once `APPLE_TEAM_ID` is set. `app.config.ts` adds Associated Do
 
 **App Store.** Privacy manifest and export-compliance flag are in `app.json`.
 
+### Verified on the simulator
+
+Light, dark, Increase Contrast, and Reduce Transparency (each alone and combined in dark); text at
+the largest accessibility size; Face ID with enrolment, a rejected face, a matching face and the
+fallback; a signed-out invite deep link. Simulator settings can be driven from the command line:
+`xcrun simctl ui booted appearance dark|light`, `content_size accessibility-large` (relaunch after
+changing it), `increase_contrast enabled`, and `xcrun simctl spawn booted notifyutil -p
+com.apple.BiometricKit_Sim.pearl.match` (or `.nomatch`) once enrolled with `notifyutil -s
+com.apple.BiometricKit.enrollmentChanged 1`.
+
 ### Needs a development build or an Apple account (not done here)
 
 Native tabs (`expo-router/unstable-native-tabs`), Home Screen quick actions, widgets, Live
 Activities, App Intents and Spotlight (all need native extension targets), Sign in with Apple, and
-signing for TestFlight. The remaining glue for universal links is owning the domain.
+signing for TestFlight. A real universal-link handoff needs a signed build and an owned domain; the
+app-side handling was checked with a deep link instead.
 
 ## Not built, on purpose
 
 Community tab, athlete challenges, a mascot, tracker sync, rewards, photo proof, money, chat,
-comments, gradients and dark mode are all out of scope for this version. See the notes at the end
+and comments are all out of scope for this version. See the notes at the end
 of the build conversation for the smaller things that were deliberately left out.

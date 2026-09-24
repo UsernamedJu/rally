@@ -41,7 +41,7 @@ export default function SignIn() {
     return (
       <Page
         header={header}
-        bubbles="checkin"
+        backdrop="checkin"
         footer={
           <>
             <Button title="Next" disabled={digits.length !== 10} onPress={() => setStep(1)} />
@@ -65,7 +65,7 @@ export default function SignIn() {
   }
 
   return (
-    <Page header={header} bubbles="checkin" footer={<ErrorText>{error}</ErrorText>}>
+    <Page header={header} backdrop="checkin" footer={<ErrorText>{error}</ErrorText>}>
       <T variant="display" center>Enter your PIN</T>
       <View style={{ marginTop: space.gap * 2 }}>
         <PinPad
