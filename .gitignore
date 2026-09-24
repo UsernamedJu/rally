@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# local API data: session tokens, PIN hashes and real user records. Never commit.
+/server/data/
