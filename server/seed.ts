@@ -2,6 +2,7 @@
 // something to show during a walkthrough. Sign up in the app first, then:
 //   npm run seed              (uses the most recent signup)
 //   node server/seed.ts Dana  (uses the signup with that name)
+import { RENAME_CONSEQUENCE } from '../shared/copy.ts';
 import { addDays, localDate } from '../shared/catalog.ts';
 import type { Activity, Band, ChallengeType, Per } from '../shared/catalog.ts';
 import { settle } from './logic.ts';
@@ -94,7 +95,7 @@ const steps = challenge({
 
 const walks = challenge({
   name: 'Walk it off', type: 'walk', target: 1, per: 'day', lengthDays: 7, startDaysAgo: 20,
-  creator: tom, members: [tom, me, maria], consequence: 'Buys dinner', agreed: [tom, me, maria],
+  creator: tom, members: [tom, me, maria], consequence: RENAME_CONSEQUENCE, agreed: [tom, me, maria],
 });
 [20, 19, 18, 17, 16, 15, 14].forEach((d) => log(me, walks, d, 'walk'));
 [20, 18, 17, 15, 14].forEach((d) => log(tom, walks, d, 'walk'));

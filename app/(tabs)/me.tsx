@@ -2,12 +2,13 @@ import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { MeData, TrackedCard } from '../../shared/api';
+import { shortDate } from '../../shared/copy';
 import { useLoad } from '../../src/api';
 import { Backdrop } from '../../src/backdrop';
 import { useLargeText } from '../../src/appearance';
 import { Enter, PulseRing } from '../../src/motion';
 import { colors, radius, space } from '../../src/theme';
-import { Avatar, Button, Card, IconButton, T, useTabBarSpace } from '../../src/ui';
+import { Avatar, Button, Card, IconButton, Skeleton, T, useTabBarSpace } from '../../src/ui';
 
 export default function Me() {
   const { data, error, reload } = useLoad<MeData>('/me/summary');
@@ -25,7 +26,9 @@ export default function Me() {
               <T>{error}</T>
               <Button variant="outline" title="Try again" onPress={reload} />
             </Card>
-          ) : null
+          ) : (
+            <MeSkeleton />
+          )
         ) : (
           <>
             <Enter index={0} fade={false} style={styles.header}>
@@ -33,6 +36,15 @@ export default function Me() {
               <T variant="title" numberOfLines={1} style={{ flex: 1 }}>{data.user.name}</T>
               <IconButton name="settings" label="Settings" onPress={() => router.push('/settings')} />
             </Enter>
+
+            {data.user.nameChange ? (
+              <Enter index={1}>
+                <Card tint onPress={() => router.push('/settings')} label="Your name was changed" style={{ gap: 4 }}>
+                  <T variant="label">{data.user.nameChange.by} picked your last name</T>
+                  <T>You're {data.user.name} until {shortDate(data.user.nameChange.until)}, from {data.user.nameChange.challengeName}.</T>
+                </Card>
+              </Enter>
+            ) : null}
 
             <Enter index={1} style={styles.hero}>
               {data.streak > 0 ? (
@@ -93,6 +105,31 @@ export default function Me() {
           </>
         )}
         </ScrollView>
+    </View>
+  );
+}
+
+/** The Me screen's shape, drawn while its data is on the way, so the tab is never a blank page. */
+function MeSkeleton() {
+  return (
+    <View accessible accessibilityLabel="Loading" style={{ gap: space.gap }}>
+      <View style={styles.header}>
+        <Skeleton width={56} height={56} round={28} />
+        <Skeleton height={28} width="45%" round={10} />
+      </View>
+      <View style={[styles.hero, { gap: 10 }]}>
+        <Skeleton width={64} height={64} round={32} />
+        <Skeleton width={90} height={14} />
+      </View>
+      <View style={styles.stats}>
+        <Skeleton height={76} round={radius.card} style={{ flex: 1 }} />
+        <Skeleton height={76} round={radius.card} style={{ flex: 1 }} />
+        <Skeleton height={76} round={radius.card} style={{ flex: 1 }} />
+      </View>
+      <Skeleton width="40%" height={22} round={8} style={{ marginTop: 8 }} />
+      <Skeleton height={92} round={radius.card} />
+      <Skeleton width="50%" height={22} round={8} style={{ marginTop: 8 }} />
+      <Skeleton height={120} round={radius.card} />
     </View>
   );
 }

@@ -8,17 +8,24 @@ import { Backdrop } from '../../src/backdrop';
 import { LogFlow } from '../../src/components/LogFlow';
 import { PulseRing } from '../../src/motion';
 import { colors, space } from '../../src/theme';
-import { CheckCircle, T, useTabBarSpace } from '../../src/ui';
+import { CheckCircle, T, Waiting, useTabBarSpace } from '../../src/ui';
 
 export default function CheckIn() {
-  const { data, reload } = useLoad<CheckinData>('/checkin');
+  const { data, error, reload } = useLoad<CheckinData>('/checkin');
   // Keeps the "Logged" confirmation on screen until Done, even though today now counts as checked in.
   const [holding, setHolding] = useState(false);
   const [round, setRound] = useState(0);
   const top = useSafeAreaInsets().top;
   const tabSpace = useTabBarSpace();
 
-  if (!data) return <View style={{ flex: 1, backgroundColor: colors.paper }} />;
+  if (!data) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.paper, paddingTop: top + space.card, paddingHorizontal: space.screen }}>
+        <Backdrop scene="checkin" />
+        <Waiting error={error} onRetry={reload} blocks={[34, 260]} />
+      </View>
+    );
+  }
 
   if (data.checkedIn && !holding) {
     return (

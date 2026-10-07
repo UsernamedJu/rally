@@ -42,3 +42,9 @@ yarn-error.*
 
 # local API data: session tokens, PIN hashes and real user records. Never commit.
 /server/data/
+
+# SwiftUI app build output
+/native/build
+/native/build-device
+xcuserdata/
+*.xcuserstate

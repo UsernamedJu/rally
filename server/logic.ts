@@ -3,12 +3,13 @@ import {
   periodWord, personalTarget, rangeText, targetOptions, targetShort, targetText, unit,
 } from '../shared/catalog.ts';
 import type { Activity, Band, TrackType } from '../shared/catalog.ts';
-import { offLimitsReason } from '../shared/copy.ts';
+import { CODE_ALPHABET, RENAME_DAYS, cleanLastName, isRenameConsequence, offLimitsReason } from '../shared/copy.ts';
 import type {
   ChallengeCard, ChallengeDetail, CheckinData, CheckinResult, ConsequenceView, FriendData, HomeData,
-  HouseCard, InvitePreview, Me, MeData, PastRow, Person, SignupResult,
+  HouseCard, InvitePreview, Me, MeData, PastRow, Person, RenameView, SignupResult,
 } from '../shared/api.ts';
-import { HttpError, hashPin, isPin, newId, normalizePhone, nowIso, verifyPin } from './store.ts';
+import { HttpError, activeRenames, applyRenames, hashPin, isPin, newId, normalizePhone, nowIso, verifyPin } from './store.ts';
+import { randomInt } from 'node:crypto';
 import type { Challenge, DB, Invite, Member, User } from './store.ts';
 
 // ---------- lookups ----------
@@ -17,7 +18,7 @@ export const person = (u: User): Person => ({ id: u.id, name: u.name, avatar: u.
 
 export const meView = (u: User): Me => ({
   ...person(u), workoutTime: u.workoutTime, trackedTypes: u.trackedTypes, notifications: u.notifications,
-  band: u.band, phone: u.phone, hasPin: !!u.pinHash,
+  band: u.band, phone: u.phone, hasPin: !!u.pinHash, nameChange: u.nameChange ?? null,
 });
 
 const userById = (db: DB, id: string | null) => db.users.find((u) => u.id === id);
@@ -239,6 +240,8 @@ function cardFor(db: DB, ch: Challenge, m: Member, today: string): ChallengeCard
   return {
     id: ch.id,
     name: ch.name,
+    type: ch.type,
+    mine: !ch.houseChallenge && ch.creatorId === m.userId,
     targetShort: targetShort(ch),
     progressText: progressText(ch, p),
     fraction: Math.min(1, p.current / p.target),
@@ -470,6 +473,23 @@ export function detailFor(db: DB, ch: Challenge, viewer: User | null, today: str
     });
 
   const commissioner = active && !ch.houseChallenge && ch.creatorId === viewer?.id;
+  const standings = rows.map((r) => {
+    const now = rank.get(r.u.id) ?? 1;
+    const moved = lastWeek ? (lastWeek.get(r.u.id) ?? now) - now : 0;
+    return {
+      ...person(r.u),
+      rank: now,
+      fraction: share(r.p),
+      percent: Math.round(share(r.p) * 100),
+      label: `${fmt(r.p.credit)} of ${fmt(r.p.total)}`,
+      goalText: fair ? targetShort({ ...ch, target: r.p.target }) : null,
+      delta: moved > 0 ? `+${moved}` : moved < 0 ? String(moved) : null,
+      isYou: r.u.id === viewer?.id,
+      onTheHook: hookShown && !r.p.complete && share(r.p) === lowest,
+      complete: r.p.complete,
+    };
+  });
+  const consequence = ch.houseChallenge ? null : consequenceView(db, ch, rows.map((r) => r.u.id), viewer?.id);
   return {
     id: ch.id,
     name: ch.name,
@@ -484,7 +504,8 @@ export function detailFor(db: DB, ch: Challenge, viewer: User | null, today: str
     daysLeftText: finished ? 'Finished' : daysLeftText(diffDays(w.end, today)),
     timeFraction: finished ? 1 : Math.min(1, Math.max(0, diffDays(today, w.start) / ch.lengthDays)),
     rangeText: rangeText(w.start, w.end),
-    consequence: ch.houseChallenge ? null : consequenceView(db, ch, rows.map((r) => r.u.id), viewer?.id),
+    consequence,
+    rename: renameView(db, ch, consequence, standings.filter((s) => s.onTheHook).map((s) => s.id), youWon, viewer?.id),
     hero: {
       rank: mineRow ? `#${rank.get(mineRow.u.id)}` : '—',
       progress: mineRow ? `${Math.round(share(mineRow.p) * 100)}%` : '—',
@@ -494,22 +515,7 @@ export function detailFor(db: DB, ch: Challenge, viewer: User | null, today: str
     yourGoalText: fair && mineRow ? targetShort({ ...ch, target: mineRow.p.target }) : null,
     winnerName,
     resultText,
-    standings: rows.map((r) => {
-      const now = rank.get(r.u.id) ?? 1;
-      const moved = lastWeek ? (lastWeek.get(r.u.id) ?? now) - now : 0;
-      return {
-        ...person(r.u),
-        rank: now,
-        fraction: share(r.p),
-        percent: Math.round(share(r.p) * 100),
-        label: `${fmt(r.p.credit)} of ${fmt(r.p.total)}`,
-        goalText: fair ? targetShort({ ...ch, target: r.p.target }) : null,
-        delta: moved > 0 ? `+${moved}` : moved < 0 ? String(moved) : null,
-        isYou: r.u.id === viewer?.id,
-        onTheHook: hookShown && !r.p.complete && share(r.p) === lowest,
-        complete: r.p.complete,
-      };
-    }),
+    standings,
     members: rows.map((r) => person(r.u)),
     alerts,
     you: { member: active, commissioner, readOnly: !active, result: mine?.result ?? null },
@@ -519,6 +525,64 @@ export function detailFor(db: DB, ch: Challenge, viewer: User | null, today: str
         .map((r) => ({ ...person(r.u), pending: db.removals.some((x) => x.challengeId === ch.id && x.userId === r.u.id && !x.resolved) }))
       : [],
   };
+}
+
+/**
+ * The last name punishment. It exists only once the challenge is over and the crew agreed to a
+ * consequence about last names; the people it lands on are the ones the standings put on the hook.
+ * Each is renamed once per challenge, so a name that has run its course stays served.
+ */
+function renameView(db: DB, ch: Challenge, cv: ConsequenceView | null, loserIds: string[], youWon: boolean, viewerId?: string): RenameView | null {
+  if (ch.status !== 'done' || !cv || cv.status !== 'agreed' || !isRenameConsequence(cv.text) || !loserIds.length) return null;
+  const active = activeRenames(db);
+  const targets = loserIds.flatMap((id) => {
+    const u = userById(db, id);
+    if (!u) return [];
+    const given = db.renames.filter((r) => r.challengeId === ch.id && r.userId === id).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    const live = given && active.get(id)?.id === given.id ? given : null;
+    return [{
+      id,
+      name: u.realName ?? u.name,
+      isYou: id === viewerId,
+      status: live ? ('active' as const) : given ? ('over' as const) : ('pending' as const),
+      newName: live ? u.name : null,
+      setBy: given ? (userById(db, given.byUserId)?.realName ?? userById(db, given.byUserId)?.name ?? null) : null,
+      until: live ? live.expiresAt : null,
+    }];
+  });
+  return { canSet: youWon && targets.some((t) => t.status === 'pending'), targets };
+}
+
+export function renameLoser(db: DB, ch: Challenge, user: User, today: string, body: any): void {
+  const view = detailFor(db, ch, user, today).rename;
+  if (!view) throw new HttpError(400, 'This challenge has no last name to change.');
+  if (memberOf(db, ch, user.id)?.result !== 'won') throw new HttpError(403, 'Only the winner picks the new last name.');
+  const target = view.targets.find((t) => t.id === body?.userId);
+  if (!target) throw new HttpError(400, "That person isn't on the hook.");
+  if (target.status !== 'pending') throw new HttpError(400, 'That last name is already picked.');
+  const lastName = cleanLastName(body?.lastName);
+  if (!lastName) throw new HttpError(400, 'Use up to 20 letters. No numbers or symbols.');
+  const now = Date.now();
+  db.renames.push({
+    id: newId(),
+    challengeId: ch.id,
+    userId: target.id,
+    byUserId: user.id,
+    lastName,
+    createdAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + RENAME_DAYS * 86400000).toISOString(),
+    revertedAt: null,
+  });
+  applyRenames(db);
+}
+
+/** The person it landed on can always take their own name back. */
+export function resetName(db: DB, user: User): Me {
+  const active = activeRenames(db).get(user.id);
+  if (!active) throw new HttpError(400, "Your name hasn't been changed.");
+  active.revertedAt = nowIso();
+  applyRenames(db);
+  return meView(user);
 }
 
 export function canView(db: DB, ch: Challenge, user: User): boolean {
@@ -531,6 +595,7 @@ export function houseFor(db: DB, user: User, today: string): HouseCard[] {
     .map((ch) => ({
       id: ch.id,
       name: ch.name,
+      type: ch.type,
       targetText: targetText(ch),
       memberCount: roster(db, ch).filter((m) => isActive(ch, m, today)).length,
       joined: isActive(ch, memberOf(db, ch, user.id), today),
@@ -553,13 +618,17 @@ export function join(db: DB, ch: Challenge, user: User, today: string): void {
 export function inviteFor(db: DB, user: User, challengeId: string | null): string {
   const existing = db.invites.find((i) => i.invitedBy === user.id && i.challengeId === challengeId);
   if (existing) return existing.token;
-  const token = newId(5);
+  let token = '';
+  do token = Array.from({ length: 8 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join('');
+  while (db.invites.some((i) => i.token === token));
   db.invites.push({ token, challengeId, invitedBy: user.id, acceptedBy: [], createdAt: nowIso() });
   return token;
 }
 
 export function inviteByToken(db: DB, token: string): Invite {
-  const invite = db.invites.find((i) => i.token === token);
+  // Links carry the token exactly. Someone typing a code from a text may add a dash or use lowercase.
+  const typed = token.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const invite = db.invites.find((i) => i.token === token) ?? db.invites.find((i) => i.token === typed);
   if (!invite) throw new HttpError(404, 'This invite link does not work anymore.');
   return invite;
 }
@@ -648,7 +717,10 @@ export function updateMe(db: DB, user: User, body: any): Me {
   if (body?.name !== undefined) {
     const name = cleanText(body.name, 30);
     if (!name) throw new HttpError(400, 'Your name cannot be empty.');
-    user.name = name;
+    if (name !== user.name) {
+      if (user.nameChange) throw new HttpError(403, `${user.nameChange.by} picked your last name. You can change your name when it ends, or change it back first.`);
+      user.name = name;
+    }
   }
   if (TIMES.includes(body?.workoutTime)) user.workoutTime = body.workoutTime;
   if (body?.trackedTypes !== undefined) {
@@ -748,6 +820,23 @@ export function requestRemoval(db: DB, ch: Challenge, user: User, today: string,
   if (targetId === user.id || !isActive(ch, memberOf(db, ch, targetId), today)) throw new HttpError(400, "They're not in this challenge.");
   if (db.removals.some((r) => r.challengeId === ch.id && r.userId === targetId && !r.resolved)) return;
   db.removals.push({ id: newId(), challengeId: ch.id, userId: targetId, requestedBy: user.id, requestedAt: nowIso(), resolved: null });
+}
+
+/**
+ * Removes a challenge outright: for one made by mistake. Only the person who started it can. The
+ * workouts people logged stay theirs (streaks and weekly totals do not move); they just stop pointing
+ * at a challenge that is gone. A last name handed out by this challenge goes back.
+ */
+export function deleteChallenge(db: DB, ch: Challenge, user: User): void {
+  if (ch.houseChallenge || ch.creatorId !== user.id) throw new HttpError(403, 'Only the person who started this can do that.');
+  const gone = (x: { challengeId: string | null }) => x.challengeId === ch.id;
+  db.challenges = db.challenges.filter((c) => c.id !== ch.id);
+  db.members = db.members.filter((x) => !gone(x));
+  db.consequences = db.consequences.filter((x) => !gone(x));
+  db.invites = db.invites.filter((x) => !gone(x));
+  db.removals = db.removals.filter((x) => !gone(x));
+  db.renames = db.renames.filter((x) => !gone(x));
+  for (const log of db.logs) if (gone(log)) log.challengeId = null;
 }
 
 export function endEarly(db: DB, ch: Challenge, user: User, today: string): void {

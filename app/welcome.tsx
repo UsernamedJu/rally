@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { biometricsAvailable, biometricsLabel, unlockWithBiometrics } from '../src/biometrics';
 import { forgetAccount, getRememberedAccount, setSession, type LockedAccount } from '../src/api';
 import { Backdrop } from '../src/backdrop';
+import { InviteCodeSheet } from '../src/components/InviteCodeSheet';
 import { space } from '../src/theme';
 import { Avatar, Button, ErrorText, T, TextLink } from '../src/ui';
 
@@ -17,6 +18,7 @@ export default function Welcome() {
   const [bioLabel, setBioLabel] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -80,7 +82,9 @@ export default function Welcome() {
       <View style={{ gap: space.gap, paddingBottom: space.screen }}>
         <Button title="Create account" onPress={() => router.push('/signup')} />
         <Button variant="outline" title="Sign in" onPress={() => router.push('/signin')} />
+        <TextLink title="Have an invite?" onPress={() => setInviteOpen(true)} />
       </View>
+      <InviteCodeSheet visible={inviteOpen} onClose={() => setInviteOpen(false)} />
     </View>
   );
 }

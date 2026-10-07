@@ -5,6 +5,7 @@ import type { ComponentProps } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { prefetch } from '../../src/api';
 import { alpha, usePalette } from '../../src/appearance';
 import { Glass, useReduceTransparency } from '../../src/glass';
 import { spring, springs, useReducedMotion } from '../../src/motion';
@@ -24,6 +25,11 @@ const PAD = 6;
 const LENS_INSET = 6;
 
 export default function TabsLayout() {
+  // Tabs mount the first time they are opened, so without this the first tap on Me starts its
+  // request from zero. Ask for the views behind the tabs now, while the person is still on Home.
+  useEffect(() => {
+    prefetch(['/me/summary']);
+  }, []);
   return (
     <Tabs
       tabBar={(props) => <PillTabBar {...props} />}

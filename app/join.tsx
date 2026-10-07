@@ -3,13 +3,15 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { HouseCard } from '../shared/api';
 import { api, useLoad } from '../src/api';
+import { InviteCodeSheet } from '../src/components/InviteCodeSheet';
 import { colors, space } from '../src/theme';
-import { Button, Card, ErrorText, Header, Page, T } from '../src/ui';
+import { Button, Card, ErrorText, Header, Page, T, Waiting } from '../src/ui';
 
 export default function Join() {
-  const { data, error: loadError } = useLoad<HouseCard[]>('/house');
+  const { data, error: loadError, reload } = useLoad<HouseCard[]>('/house');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const join = async (h: HouseCard) => {
     setError(null);
@@ -27,7 +29,16 @@ export default function Join() {
   return (
     <Page header={<Header />}>
       <T variant="display">Join a challenge</T>
-      <ErrorText>{error ?? loadError}</ErrorText>
+      <Card style={{ gap: 4 }}>
+        <T variant="title">Have an invite?</T>
+        <T color={colors.stone}>Paste the link or type the code a friend sent you.</T>
+        <View style={styles.bottom}>
+          <View style={{ flex: 1 }} />
+          <Button variant="outline" title="Enter it" style={styles.button} onPress={() => setInviteOpen(true)} />
+        </View>
+      </Card>
+      <ErrorText>{error}</ErrorText>
+      {!data ? <Waiting error={loadError} onRetry={reload} blocks={[110, 110, 110]} /> : null}
       {data?.map((h) => (
         <Card key={h.id} style={{ gap: 4 }}>
           <T variant="title">{h.name}</T>
@@ -40,6 +51,7 @@ export default function Join() {
           </View>
         </Card>
       ))}
+      <InviteCodeSheet visible={inviteOpen} onClose={() => setInviteOpen(false)} />
     </Page>
   );
 }

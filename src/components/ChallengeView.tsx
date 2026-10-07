@@ -9,6 +9,8 @@ import { colors, radius, space } from '../theme';
 import { Avatar, AvatarStack, Button, Card, CheckCircle, ErrorText, Header, Icon, Page, ProgressBar, Sheet, T, TextLink } from '../ui';
 import { ConsequencePicker, consequenceProblem } from './ConsequencePicker';
 import { useInviteComposer } from './InviteComposer';
+import { useRecap } from '../intelligence';
+import { RenameCard } from './RenameCard';
 
 type Props = {
   detail: ChallengeDetail;
@@ -27,6 +29,7 @@ export function ChallengeView({ detail, onChange, header, eyebrow, footer }: Pro
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const largeText = useLargeText();
+  const recap = useRecap(detail);
   const live = !detail.you.readOnly;
   const c = detail.consequence;
 
@@ -77,6 +80,18 @@ export function ChallengeView({ detail, onChange, header, eyebrow, footer }: Pro
             <HeroStat stacked={largeText} value={detail.hero.rank} label="Rank" />
             <HeroStat stacked={largeText} value={detail.hero.progress} label="Progress" />
             <HeroStat stacked={largeText} value={detail.hero.people} label="People" />
+          </Enter>
+        ) : null}
+
+        {recap ? (
+          <Enter index={2}>
+            <Card style={styles.recap}>
+              <Icon name="star" size={20} color={colors.ink} />
+              <View style={{ flex: 1, gap: 4 }}>
+                <T>{recap}</T>
+                <T variant="small">Written on this iPhone by Apple Intelligence</T>
+              </View>
+            </Card>
           </Enter>
         ) : null}
 
@@ -135,7 +150,23 @@ export function ChallengeView({ detail, onChange, header, eyebrow, footer }: Pro
         </Card>
         </Enter>
 
-        <Enter index={4} style={{ gap: space.gap }}>
+        {detail.rename ? (
+          <Enter index={4}>
+            <RenameCard
+              detail={detail}
+              onSet={async (userId, lastName) => {
+                try {
+                  onChange(await api<ChallengeDetail>(`/challenges/${detail.id}/rename`, { body: { userId, lastName } }));
+                  return null;
+                } catch (e) {
+                  return (e as Error).message;
+                }
+              }}
+            />
+          </Enter>
+        ) : null}
+
+        <Enter index={5} style={{ gap: space.gap }}>
           <T variant="title">Standings</T>
           <Card style={{ padding: 8, gap: 4 }}>
             {detail.standings.map((row, i) => (
@@ -166,7 +197,7 @@ export function ChallengeView({ detail, onChange, header, eyebrow, footer }: Pro
       </Page>
 
       <Sheet visible={sheet === 'propose'} onClose={() => setSheet(null)} title="Consequence for last place?">
-        <ConsequencePicker value={draft} onChange={setDraft} />
+        <ConsequencePicker value={draft} onChange={setDraft} context={`${detail.name}, ${detail.targetText}`} />
         <T variant="small">Your crew votes on this. No money, nothing mean.</T>
         <ErrorText>{error}</ErrorText>
         <Button
@@ -273,6 +304,7 @@ const styles = StyleSheet.create({
   heroStatWide: { flex: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.card },
   heroStat: { flex: 1, backgroundColor: colors.card, borderRadius: radius.card, paddingVertical: 16, paddingHorizontal: 8, gap: 2 },
   result: { flexDirection: 'row', alignItems: 'center', gap: space.gap },
+  recap: { flexDirection: 'row', alignItems: 'flex-start', gap: space.gap },
   standing: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.card - 4, borderWidth: 1.5, borderColor: 'transparent' },
   you: { borderColor: colors.ink },
   rankBadge: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },

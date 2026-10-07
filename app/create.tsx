@@ -95,7 +95,7 @@ export default function Create() {
   } else if (step === 2) {
     body = (
       <>
-        <ConsequencePicker value={consequence} onChange={setConsequence} />
+        <ConsequencePicker value={consequence} onChange={setConsequence} context={`${spec.name}, ${targetText(spec)}`} />
         <T variant="small">Your crew votes on this once they're in. No money, nothing mean.</T>
       </>
     );

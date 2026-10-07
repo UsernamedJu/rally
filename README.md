@@ -45,6 +45,40 @@ you won, and a few days of history so the streak and the charts have something i
 `npm run seed -- Dana` targets a person by name. Data lives in `server/data/db.json`; delete it
 to start over.
 
+The seeded finished challenge, "Walk it off", carries the last name consequence and is won by the
+seeded user, so the winner's screen can be tried without waiting a week for a challenge to end. The
+demo user signs in on a fresh install with phone 555 010 0001 and PIN 2580 (development data only).
+
+## Last name consequence
+
+One of the suggested consequences is "Gets a new last name from the winner for a week", and any
+consequence that mentions a last name works the same way. When the challenge ends, the winner sees a
+"Pick a new last name" card with a field for each person on the hook, and gives them any last name
+of up to 20 letters. It lasts seven days, then the name goes back by itself.
+
+- The new name is applied when the server loads a user, so every place a name is printed shows it
+  (standings, crew, "Maria won this one"). The stored name is never changed; `save()` writes the real
+  one back.
+- The person it lands on sees a notice on Me and can change it back from Settings, and cannot edit
+  their name there while it is in effect. Each person on the hook is renamed once per challenge.
+
+## Inviting friends
+
+An invite is a link plus an eight character code (`K7M2-QX9R`, no look-alike characters, typed in any
+case). Someone who has the app but never tapped a link uses "Have an invite?" on Welcome or on Join a
+challenge and pastes the whole text or types the code. Share another way opens the system share sheet
+for anything that is not Messages.
+
+For friends who are not on your Wi-Fi, three things have to be true, and none of them can be done from
+inside the app:
+
+1. The API is reachable from the internet at an HTTPS address, and the app was built with
+   `EXPO_PUBLIC_API_URL` set to it. That address is baked in at build time.
+2. `EXPO_PUBLIC_INVITE_URL` is the same address, so the link in the text opens the invite page (a
+   custom-scheme link like `fitchallenge://` is not tappable in Messages).
+3. `INSTALL_URL` (for the API process) is the TestFlight or App Store link, so the invite page can
+   send someone who has not installed the app to get it.
+
 ## How scoring works
 
 Each period (a day or a week) earns credit up to the target, so five gym sessions in one week
@@ -129,6 +163,24 @@ Association file once `APPLE_TEAM_ID` is set. `app.config.ts` adds Associated Do
 `INVITE_DOMAIN`. Together those are everything universal links need except a real domain.
 
 **App Store.** Privacy manifest and export-compliance flag are in `app.json`.
+
+### Apple Intelligence
+
+Uses Apple's on-device model (Foundation Models, iOS 26) through a small local native module in
+`modules/rally-intelligence`. Nothing is sent anywhere. It only works on iPhones with Apple
+Intelligence (iPhone 15 Pro and newer) with it turned on. Everywhere else (older phones, web, Expo
+Go) the screens look exactly as they did before.
+
+- **Crew recap**: on a challenge with at least two people, one or two sentences about where you
+  stand, written from the standings. It is cached per set of standings while the app is open.
+- **Consequence ideas**: "Suggest more" under the consequence chips asks for three fresh ideas
+  for this challenge. They go through the same no-money filter as anything typed.
+- **Writing Tools**: the text fields are standard iOS fields, so proofread and rewrite are already
+  in the edit menu. Genmoji is left out because challenge names and consequences are plain text on
+  the server and in the invite texts, so a Genmoji would not survive the trip.
+
+The simulator uses the Mac's model, so Apple Intelligence has to be on in the Mac's System
+Settings to try these there. Adding the module needs a native rebuild (`pod install`, then build).
 
 ### Verified on the simulator
 

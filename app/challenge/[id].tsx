@@ -2,7 +2,7 @@ import { useLocalSearchParams } from 'expo-router';
 import type { ChallengeDetail } from '../../shared/api';
 import { useLoad } from '../../src/api';
 import { ChallengeView } from '../../src/components/ChallengeView';
-import { Button, Card, Header, Page, T } from '../../src/ui';
+import { Header, Page, Waiting } from '../../src/ui';
 
 export default function ChallengeScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -11,12 +11,7 @@ export default function ChallengeScreen() {
   if (!data) {
     return (
       <Page header={<Header />}>
-        {error ? (
-          <Card style={{ gap: 12 }}>
-            <T>{error}</T>
-            <Button variant="outline" title="Try again" onPress={reload} />
-          </Card>
-        ) : null}
+        <Waiting error={error} onRetry={reload} blocks={[40, 76, 110, 160]} />
       </Page>
     );
   }

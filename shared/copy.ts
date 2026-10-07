@@ -1,9 +1,14 @@
 import { TYPES, targetShort, weeksText } from './catalog.ts';
 import type { TargetSpec, Tone } from './catalog.ts';
 
+/** Picking this one hands the winner a real move: the loser's last name is theirs to change for a week. */
+export const RENAME_CONSEQUENCE = 'Gets a new last name from the winner for a week';
+export const RENAME_DAYS = 7;
+
 export const CONSEQUENCE_SUGGESTIONS = [
   'Buys coffee',
   'Buys dinner',
+  RENAME_CONSEQUENCE,
   'Posts an embarrassing video',
   "Wears the crew's pick for a day",
   "Does the winner's chores once",
@@ -99,4 +104,41 @@ export function reminderLines(friendName: string | null): string[] {
     'A quick walk counts. Go get one in.',
     'Your workout called. It wants to know where you are.',
   ];
+}
+
+/** Any wording that puts the loser's last name in the winner's hands turns the rename on. */
+export const isRenameConsequence = (text: string | null | undefined): boolean =>
+  !!text && /\blast[- ]?name\b/i.test(text);
+
+/** A last name a winner may give: letters, spaces, hyphens, apostrophes and periods, up to 20. Null if not. */
+export function cleanLastName(v: unknown): string | null {
+  const name = typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : '';
+  return /^\p{L}[\p{L} '\u2019.-]{0,19}$/u.test(name) ? name : null;
+}
+
+/** "Maria Lopez" + "Smith" is "Maria Smith"; a first name on its own just gets the last name added. */
+export function withLastName(name: string, last: string): string {
+  const parts = name.trim().split(/\s+/);
+  return [...(parts.length > 1 ? parts.slice(0, -1) : parts), last].join(' ');
+}
+
+/** "Oct 2" from a timestamp. */
+export const shortDate = (iso: string): string => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+// ---------- invite codes ----------
+// A code is what a friend can type or read aloud when a link will not tap (custom-scheme links do not
+// in Messages) or they have not installed the app yet. No 0/O, 1/I/L, so it survives being read out.
+
+export const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+
+/** "K7M2QX9R" shows as "K7M2-QX9R". Older links, which are longer and mixed case, show as they are. */
+export const formatInviteCode = (token: string): string =>
+  /^[A-Z0-9]{8}$/.test(token) ? `${token.slice(0, 4)}-${token.slice(4)}` : token;
+
+/** What someone pasted or typed into an invite box, reduced to the token, or null if it is not one. */
+export function parseInviteInput(raw: string): string | null {
+  const text = raw.trim();
+  const fromLink = text.match(/\/invite\/([\w-]+)/);
+  const token = fromLink ? fromLink[1] : text.replace(/\s+/g, '');
+  return /^[\w-]{4,40}$/.test(token) ? token : null;
 }

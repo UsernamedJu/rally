@@ -119,9 +119,32 @@ export class ApiError extends Error {
   }
 }
 
+// A request that has not answered in this long is not going to. Without a limit, iOS waits a full
+// minute on a host that has changed address or a Wi-Fi that dropped, and the screen just sits there.
+const REQUEST_TIMEOUT_MS = 10_000;
+const RETRY_DELAY_MS = 350;
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+async function attempt(url: string, init: RequestInit): Promise<Response> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: abort.signal });
+  } catch (e) {
+    // What an aborted fetch rejects with differs by runtime, so ask our own controller instead.
+    throw Object.assign(e instanceof Error ? e : new Error('Request failed'), { timedOut: abort.signal.aborted });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function api<T>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
   const method = opts.method ?? (opts.body !== undefined ? 'POST' : 'GET');
-  const res = await fetch(`${apiBase()}/api${path}`, {
+  const url = `${apiBase()}/api${path}`;
+  const init: RequestInit = {
     method,
     headers: {
       'Content-Type': 'application/json',
@@ -129,9 +152,28 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
       ...(session.token ? { Authorization: `Bearer ${session.token}` } : {}),
     },
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-  }).catch(() => {
-    throw new ApiError(0, "Can't reach the server. Check your connection and try again.");
-  });
+  };
+  // Reads are safe to repeat, so one dropped connection (a reused socket the server had already
+  // closed, a Wi-Fi blip) is retried quietly. Writes are never repeated: a second POST could log twice.
+  const tries = method === 'GET' ? 2 : 1;
+  let res: Response | null = null;
+  let timedOut = false;
+  for (let i = 0; i < tries && !res; i++) {
+    if (i > 0) await sleep(RETRY_DELAY_MS);
+    try {
+      res = await attempt(url, init);
+    } catch (e) {
+      timedOut = (e as { timedOut?: boolean }).timedOut === true;
+    }
+  }
+  if (!res) {
+    throw new ApiError(
+      0,
+      timedOut
+        ? 'The server is taking too long to answer. Check your connection and try again.'
+        : "Can't reach the server. Check your connection and try again.",
+    );
+  }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && session.token) await setSession(null);
   if (!res.ok) throw new ApiError(res.status, data.error ?? 'Something went wrong. Try again.');
@@ -166,7 +208,36 @@ function writeCache(path: string, data: unknown) {
   AsyncStorage.setItem(CACHE_PREFIX + path, JSON.stringify({ date: localDate(), data })).catch(() => {});
 }
 
+// The same responses, held in memory for the life of the app. A screen that mounts after one of these
+// has landed starts with real content on its very first frame instead of a blank one.
+const memory = new Map<string, unknown>();
+const inflight = new Map<string, Promise<unknown>>();
+
+/** Fetches a view once however many screens ask for it at the same moment, and remembers the answer. */
+function fetchView<T>(path: string): Promise<T> {
+  const key = `${session.token ?? ''}${path}`;
+  const running = inflight.get(key);
+  if (running) return running as Promise<T>;
+  const request = api<T>(path)
+    .then((fresh) => {
+      if (cacheable(path)) {
+        memory.set(path, fresh);
+        writeCache(path, fresh);
+      }
+      return fresh;
+    })
+    .finally(() => inflight.delete(key));
+  inflight.set(key, request);
+  return request;
+}
+
+/** Warms the views behind the tabs so the first tap on one does not start from nothing. */
+export function prefetch(paths: string[]) {
+  for (const path of paths) fetchView(path).catch(() => {});
+}
+
 export async function clearCache() {
+  memory.clear();
   try {
     const keys = await AsyncStorage.getAllKeys();
     await AsyncStorage.multiRemove(keys.filter((k) => k.startsWith(CACHE_PREFIX)));
@@ -177,17 +248,21 @@ export async function clearCache() {
 
 /** Loads a view every time its screen comes into focus, keeping the last copy on screen meanwhile. */
 export function useLoad<T>(path: string | null) {
-  const [data, setData] = useState<T | null>(null);
+  const [data, setData] = useState<T | null>(() => (path ? ((memory.get(path) as T | undefined) ?? null) : null));
   const [error, setError] = useState<string | null>(null);
+  const latest = useRef(0);
   const reload = useCallback(async () => {
     if (!path) return;
+    // Two loads can overlap (focus, then a write bumping the data version). Only the newest applies,
+    // so a slow older answer can never land on top of a fresher one.
+    const mine = ++latest.current;
     try {
-      const fresh = await api<T>(path);
+      const fresh = await fetchView<T>(path);
+      if (mine !== latest.current) return;
       setData(fresh);
       setError(null);
-      writeCache(path, fresh);
     } catch (e) {
-      setError((e as Error).message);
+      if (mine === latest.current) setError((e as Error).message);
     }
   }, [path]);
   // Show what we had last time straight away, unless the network has already beaten it here.
@@ -211,7 +286,9 @@ export function useLoad<T>(path: string | null) {
   useEffect(() => {
     if (seen.current === version) return;
     seen.current = version;
+    // A write just happened, so an answer already in flight may predate it. Start over.
+    inflight.delete(`${session.token ?? ''}${path}`);
     reload();
-  }, [version, reload]);
+  }, [version, reload, path]);
   return { data, setData, error, reload };
 }

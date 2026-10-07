@@ -35,6 +35,8 @@ const SF: Partial<Record<IconName, { base: string; filled?: string }>> = {
   award: { base: 'trophy', filled: 'trophy.fill' },
   flag: { base: 'flag', filled: 'flag.fill' },
   activity: { base: 'waveform.path.ecg' },
+  // Feather has no sparkles; its star stands in on web, where Apple Intelligence never shows anyway.
+  star: { base: 'sparkles' },
 };
 
 type IconProps = {
@@ -174,6 +176,53 @@ export function Card({ children, onPress, tint, style, label }: CardProps) {
     <Pressy accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={s}>
       {children}
     </Pressy>
+  );
+}
+
+/**
+ * A quiet placeholder for something that is on its way. It breathes slowly instead of spinning, holds
+ * still under Reduce Motion, and is hidden from VoiceOver (the screen announces itself once loaded).
+ */
+export function Skeleton({ width, height = 16, round = 8, style }: { width?: number | `${number}%`; height?: number; round?: number; style?: StyleProp<ViewStyle> }) {
+  const reduce = useReducedMotion();
+  const breathe = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (reduce) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breathe, { toValue: 1, duration: 900, useNativeDriver: nativeDriver }),
+        Animated.timing(breathe, { toValue: 0, duration: 900, useNativeDriver: nativeDriver }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [breathe, reduce]);
+  const opacity = reduce ? 0.7 : breathe.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0.9] });
+  return (
+    <Animated.View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[{ width: width ?? '100%', height, borderRadius: round, backgroundColor: colors.track, opacity }, style]}
+    />
+  );
+}
+
+/** What a screen shows until its data arrives: placeholders, or a plain message and a way to retry. */
+export function Waiting({ error, onRetry, blocks = [34, 110, 110] }: { error?: string | null; onRetry: () => void; blocks?: number[] }) {
+  if (error) {
+    return (
+      <Card style={{ gap: space.gap }}>
+        <T>{error}</T>
+        <Button variant="outline" title="Try again" onPress={onRetry} />
+      </Card>
+    );
+  }
+  return (
+    <View accessible accessibilityLabel="Loading" style={{ gap: space.gap }}>
+      {blocks.map((h, i) => (
+        <Skeleton key={i} height={h} round={i === 0 ? 10 : radius.card} width={i === 0 ? '60%' : undefined} />
+      ))}
+    </View>
   );
 }
 

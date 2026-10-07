@@ -4,9 +4,10 @@ import http from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { isDate, localDate } from '../shared/catalog.ts';
 import {
+  deleteChallenge,
   acceptInvite, agreeConsequence, canView, challengeById, checkinFor, createChallenge, detailFor, endEarly,
   friendFor, homeFor, houseFor, inviteByToken, inviteFor, invitePreview, isActive, join, logCheckin, meFor,
-  meView, memberOf, proposeConsequence, requestRemoval, settle, signin, signup, undoCheckin, updateMe,
+  meView, memberOf, proposeConsequence, renameLoser, requestRemoval, resetName, settle, signin, signup, undoCheckin, updateMe,
 } from './logic.ts';
 import { appSiteAssociation, invitePage } from './preview.ts';
 import { DATA_FILE, HttpError, load, save } from './store.ts';
@@ -29,6 +30,7 @@ open('GET', '/api/invites/:token', ({ db, today, user, params }) => invitePrevie
 
 route('GET', '/api/me', ({ user }) => meView(user));
 route('PATCH', '/api/me', ({ db, user, body }) => updateMe(db, user, body));
+route('POST', '/api/me/name/reset', ({ db, user }) => resetName(db, user));
 route('GET', '/api/home', ({ db, user, today }) => homeFor(db, user, today));
 route('GET', '/api/me/summary', ({ db, user, today }) => meFor(db, user, today));
 route('GET', '/api/crew/:id', ({ db, user, params }) => friendFor(db, user, params.id));
@@ -63,8 +65,13 @@ challengeRoute('POST', '/join', ({ db, user, today }, ch) => {
 });
 challengeRoute('POST', '/consequence', ({ db, user, today, body }, ch) => proposeConsequence(db, ch, user, today, body));
 challengeRoute('POST', '/consequence/agree', ({ db, user, today }, ch) => agreeConsequence(db, ch, user, today));
+challengeRoute('POST', '/rename', ({ db, user, today, body }, ch) => renameLoser(db, ch, user, today, body));
 challengeRoute('POST', '/removals', ({ db, user, today, body }, ch) => requestRemoval(db, ch, user, today, body));
 challengeRoute('POST', '/end', ({ db, user, today }, ch) => endEarly(db, ch, user, today));
+route('POST', '/api/challenges/:id/delete', ({ db, user, params }) => {
+  deleteChallenge(db, challengeById(db, params.id), user);
+  return { ok: true };
+});
 
 function match(method: string, pathname: string) {
   const parts = pathname.split('/').filter(Boolean);
@@ -135,6 +142,7 @@ function servePublic(req: IncomingMessage, res: ServerResponse, pathname: string
         base: origin(req),
         token: invite[1],
         scheme: process.env.APP_SCHEME ?? 'fitchallenge',
+        installUrl: process.env.INSTALL_URL,
       }));
     } catch (err) {
       const message = err instanceof HttpError ? err.message : 'Something went wrong.';
@@ -157,7 +165,7 @@ function servePublic(req: IncomingMessage, res: ServerResponse, pathname: string
   return false;
 }
 
-http
+const server = http
   .createServer(async (req, res) => {
     if (req.method === 'OPTIONS') {
       res.writeHead(204, CORS);
@@ -187,3 +195,9 @@ http
     }
   })
   .listen(PORT, '0.0.0.0', () => console.log(`API on http://localhost:${PORT}  data: ${DATA_FILE}`));
+
+// Node closes an idle connection after 5 seconds. A phone that reuses one just as it closes gets a
+// dropped request, which shows up as a screen that occasionally hangs for no reason. Hold them open
+// longer than any client will (and the header timeout just past that, as Node requires).
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import type { TargetSpec, Tone } from '../../shared/catalog';
-import { TONES, inviteMessage } from '../../shared/copy';
+import { TONES, formatInviteCode, inviteMessage } from '../../shared/copy';
 import { inviteLink } from '../api';
 import { Chips } from '../inputs';
-import { canPickContacts, sendText, textContact } from '../share';
+import { canPickContacts, sendText, shareSheet, textContact } from '../share';
 import { colors, space } from '../theme';
 import { Button, Card, ErrorText, T, TextLink } from '../ui';
 
@@ -20,16 +20,18 @@ type Options = {
 /** Returns the message picker and its buttons separately, so screens can pin the buttons at the bottom. */
 export function useInviteComposer({ spec, getToken, onFinish, onSkip, onSheet }: Options) {
   const [tone, setTone] = useState<Tone>('friendly');
-  const [busy, setBusy] = useState<'text' | 'contacts' | null>(null);
+  const [busy, setBusy] = useState<'text' | 'contacts' | 'share' | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const send = async (how: 'text' | 'contacts') => {
+  const send = async (how: 'text' | 'contacts' | 'share') => {
     setBusy(how);
     setError(null);
     try {
-      const message = inviteMessage(tone, spec, inviteLink(await getToken()));
-      const outcome = how === 'text' ? await sendText(message) : await textContact(message);
+      const token = await getToken();
+      // The code rides along with the link: it is what works when the link will not tap.
+      const message = `${inviteMessage(tone, spec, inviteLink(token))}\n\nOr open Rally and enter the code ${formatInviteCode(token)}.`;
+      const outcome = how === 'text' ? await sendText(message) : how === 'share' ? await shareSheet(message) : await textContact(message);
       if (outcome === 'sent') onFinish();
       if (outcome === 'copied') setCopied(true);
     } catch (e) {
@@ -62,6 +64,7 @@ export function useInviteComposer({ spec, getToken, onFinish, onSkip, onSheet }:
       {canPickContacts ? (
         <Button variant="outline" title="Pick from contacts" busy={busy === 'contacts'} disabled={!!busy} onPress={() => send('contacts')} />
       ) : null}
+      <TextLink title="Share another way" onPress={() => !busy && send('share')} />
       {onSkip ? <TextLink title="Start without inviting yet" onPress={onSkip} /> : null}
     </>
   );

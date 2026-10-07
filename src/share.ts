@@ -23,6 +23,13 @@ export async function sendText(body: string, phone?: string): Promise<Sent> {
   return shared.action === Share.dismissedAction ? 'cancelled' : 'sent';
 }
 
+/** The system share sheet: AirDrop, WhatsApp, Notes, copy. For when Messages is not how this friend is reached. */
+export async function shareSheet(body: string): Promise<Sent> {
+  if (onWeb) return sendText(body);
+  const shared = await Share.share({ message: body });
+  return shared.action === Share.dismissedAction ? 'cancelled' : 'sent';
+}
+
 export const canPickContacts = !onWeb;
 
 /** Opens the phone's contact picker, then texts the first number on the contact that was picked. */

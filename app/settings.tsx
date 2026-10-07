@@ -2,12 +2,13 @@ import { useRef, useState } from 'react';
 import { View } from 'react-native';
 import type { Me } from '../shared/api';
 import { BANDS, TIMES, TRACK_TYPES, TYPES, timeLabel } from '../shared/catalog';
+import { shortDate } from '../shared/copy';
 import type { TrackType } from '../shared/catalog';
 import { api, setSession, useLoad } from '../src/api';
 import { Chips, PinPad, TextField, Wheel } from '../src/inputs';
 import { scheduleReminders } from '../src/notifications';
 import { colors, space } from '../src/theme';
-import { Button, Card, ErrorText, Header, Page, Sheet, T, TextLink } from '../src/ui';
+import { Button, Card, ErrorText, Header, Page, Sheet, T, TextLink, Waiting } from '../src/ui';
 
 type Patch = Partial<Pick<Me, 'name' | 'workoutTime' | 'trackedTypes' | 'notifications' | 'band'>>;
 
@@ -16,7 +17,7 @@ function formatPhone(digits: string): string {
 }
 
 export default function Settings() {
-  const { data, setData } = useLoad<Me>('/me');
+  const { data, setData, error: loadError, reload } = useLoad<Me>('/me');
   const [name, setName] = useState<string | null>(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [phoneSheet, setPhoneSheet] = useState(false);
@@ -35,6 +36,16 @@ export default function Settings() {
       if (patch.workoutTime || patch.notifications !== undefined) {
         scheduleReminders({ enabled: next.notifications, time: next.workoutTime, friendName: null, ask: patch.notifications === true });
       }
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const resetName = async () => {
+    setError(null);
+    try {
+      setData(await api<Me>('/me/name/reset', { body: {} }));
+      setName(null);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -62,7 +73,13 @@ export default function Settings() {
     }
   };
 
-  if (!data) return <Page header={<Header />}>{null}</Page>;
+  if (!data) {
+    return (
+      <Page header={<Header />}>
+        <Waiting error={loadError} onRetry={reload} blocks={[40, 90, 90, 90]} />
+      </Page>
+    );
+  }
 
   return (
     <>
@@ -76,10 +93,20 @@ export default function Settings() {
             value={name ?? data.name}
             onChangeText={setName}
             maxLength={30}
+            editable={!data.nameChange}
             onBlur={() => name?.trim() && name.trim() !== data.name && save({ name })}
             onSubmitEditing={() => name?.trim() && name.trim() !== data.name && save({ name })}
-            style={{ backgroundColor: colors.paper }}
+            style={{ backgroundColor: colors.paper, opacity: data.nameChange ? 0.6 : 1 }}
           />
+          {data.nameChange ? (
+            <>
+              <T variant="small">
+                {data.nameChange.by} picked your last name after {data.nameChange.challengeName}. It goes back on its own
+                on {shortDate(data.nameChange.until)}.
+              </T>
+              <TextLink title="Change it back now" onPress={resetName} />
+            </>
+          ) : null}
         </Card>
 
         <Card style={{ gap: space.gap }}>

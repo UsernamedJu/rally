@@ -4,16 +4,16 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { FriendData, HomeData, Person } from '../../shared/api';
 import { localDate } from '../../shared/catalog';
-import { bannerFor, crewInviteMessage } from '../../shared/copy';
+import { bannerFor, crewInviteMessage, formatInviteCode } from '../../shared/copy';
 import { api, inviteLink, useLoad } from '../../src/api';
 import { Backdrop } from '../../src/backdrop';
 import { ChallengeCard } from '../../src/components/ChallengeCard';
 import { useLargeText } from '../../src/appearance';
 import { Enter } from '../../src/motion';
 import { scheduleReminders } from '../../src/notifications';
-import { canPickContacts, sendText, textContact } from '../../src/share';
+import { canPickContacts, sendText, shareSheet, textContact } from '../../src/share';
 import { colors, radius, space } from '../../src/theme';
-import { Avatar, Button, Card, ErrorText, Icon, Sheet, T, useTabBarSpace } from '../../src/ui';
+import { Avatar, Button, Card, ErrorText, Icon, Sheet, Skeleton, T, TextLink, useTabBarSpace } from '../../src/ui';
 
 function greeting() {
   const h = new Date().getHours();
@@ -99,7 +99,14 @@ export default function Home() {
             <T>{error}</T>
             <Button variant="outline" title="Try again" onPress={reload} />
           </Card>
-        ) : null}
+        ) : (
+          <View accessible accessibilityLabel="Loading" style={{ gap: space.gap }}>
+            <Skeleton width="70%" height={34} round={10} />
+            <Skeleton height={56} round={radius.card} />
+            <Skeleton height={110} round={radius.card} />
+            <Skeleton height={110} round={radius.card} />
+          </View>
+        )}
         {largeText && data ? <View style={{ gap: space.gap, paddingBottom: tabSpace }}>{actions}</View> : null}
       </ScrollView>
 
@@ -144,12 +151,12 @@ function AddCrewSheet({ visible, onClose }: { visible: boolean; onClose: () => v
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const send = async (how: 'text' | 'contacts') => {
+  const send = async (how: 'text' | 'contacts' | 'share') => {
     setError(null);
     try {
       const { token } = await api<{ token: string }>('/crew/invite', { body: {} });
-      const message = crewInviteMessage(inviteLink(token));
-      const outcome = how === 'text' ? await sendText(message) : await textContact(message);
+      const message = `${crewInviteMessage(inviteLink(token))}\n\nOr open Rally and enter the code ${formatInviteCode(token)}.`;
+      const outcome = how === 'text' ? await sendText(message) : how === 'share' ? await shareSheet(message) : await textContact(message);
       if (outcome === 'sent') onClose();
       if (outcome === 'copied') setNote('Link copied. Paste it into a text.');
     } catch (e) {
@@ -168,6 +175,7 @@ function AddCrewSheet({ visible, onClose }: { visible: boolean; onClose: () => v
     >
       <Button title="Text a link" onPress={() => send('text')} />
       {canPickContacts ? <Button variant="outline" title="Find from contacts" onPress={() => send('contacts')} /> : null}
+      <TextLink title="Share another way" onPress={() => send('share')} />
       {note ? <T variant="label">{note}</T> : null}
       <ErrorText>{error}</ErrorText>
     </Sheet>

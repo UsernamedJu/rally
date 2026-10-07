@@ -3,7 +3,12 @@ import type { Band, ChallengeType, Per, Result, TrackType } from './catalog.ts';
 
 export type Person = { id: string; name: string; avatar: number };
 
+/** A last name a challenge winner gave someone, while it lasts. */
+export type NameChange = { lastName: string; by: string; challengeName: string; until: string };
+
 export type Me = Person & {
+  /** Set while a winner's chosen last name is in effect. `name` is then the changed one. */
+  nameChange: NameChange | null;
   workoutTime: string;
   trackedTypes: TrackType[];
   notifications: boolean;
@@ -18,6 +23,9 @@ export type SignupResult = { token: string; user: Me; challengeId: string | null
 export type ChallengeCard = {
   id: string;
   name: string;
+  type: ChallengeType;
+  /** You started this one, so it is yours to delete. */
+  mine: boolean;
   targetShort: string;
   progressText: string;
   fraction: number;
@@ -65,6 +73,24 @@ export type ConsequenceView = {
   waitingOn: number;
 };
 
+/** The last name punishment, once the challenge is over and its consequence is the rename one. */
+export type RenameView = {
+  /** You won and someone here still needs a new last name. */
+  canSet: boolean;
+  targets: {
+    id: string;
+    /** Their own name, before any change. */
+    name: string;
+    isYou: boolean;
+    /** pending: still the winner's to pick. active: they carry it now. over: it ran its course. */
+    status: 'pending' | 'active' | 'over';
+    /** The full name they carry now, while active. */
+    newName: string | null;
+    setBy: string | null;
+    until: string | null;
+  }[];
+};
+
 export type ChallengeDetail = {
   id: string;
   name: string;
@@ -80,6 +106,7 @@ export type ChallengeDetail = {
   timeFraction: number;
   rangeText: string;
   consequence: ConsequenceView | null;
+  rename: RenameView | null;
   hero: HeroStats;
   /** Ranked on percent of each person's own goal. */
   fair: boolean;
@@ -127,7 +154,7 @@ export type MeData = {
   past: PastRow[];
 };
 
-export type HouseCard = { id: string; name: string; targetText: string; memberCount: number; joined: boolean };
+export type HouseCard = { id: string; name: string; type: ChallengeType; targetText: string; memberCount: number; joined: boolean };
 
 export type InvitePreview = {
   token: string;

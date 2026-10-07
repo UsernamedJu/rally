@@ -14,6 +14,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ios: {
       ...config.ios,
       associatedDomains: domain ? [`applinks:${domain}`] : config.ios?.associatedDomains,
+      // The Apple developer team that signs the build. Read from the environment so a personal team id
+      // is not committed: APPLE_TEAM_ID=XXXXXXXXXX npx expo prebuild
+      appleTeamId: process.env.APPLE_TEAM_ID ?? config.ios?.appleTeamId,
     },
   };
 };

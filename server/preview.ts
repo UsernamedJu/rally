@@ -3,6 +3,7 @@
 // page's Open Graph tags, so this page is mostly metadata. It is also where universal links start:
 // iOS reads /.well-known/apple-app-site-association to learn which paths belong to the app.
 import type { InvitePreview } from '../shared/api.ts';
+import { formatInviteCode } from '../shared/copy.ts';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
@@ -12,6 +13,8 @@ export type PageOptions = {
   token: string;
   /** The app's URL scheme, for the "Open in Rally" button. */
   scheme: string;
+  /** Where to get the app (a TestFlight or App Store link), for someone who has not installed it yet. */
+  installUrl?: string;
 };
 
 /** Title and description for the card. Kept short, because Messages truncates hard. */
@@ -26,6 +29,7 @@ export function invitePage(p: InvitePreview, o: PageOptions): string {
   const { title, description } = cardText(p);
   const url = `${o.base}/invite/${encodeURIComponent(o.token)}`;
   const open = `${o.scheme}://invite/${encodeURIComponent(o.token)}`;
+  const install = o.installUrl && /^https?:\/\//.test(o.installUrl) ? o.installUrl : null;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -33,7 +37,7 @@ export function invitePage(p: InvitePreview, o: PageOptions): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(description)}">
-<meta name="theme-color" content="#E8342B">
+<meta name="theme-color" content="#D62B23">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Rally">
 <meta property="og:title" content="${esc(title)}">
@@ -49,8 +53,12 @@ export function invitePage(p: InvitePreview, o: PageOptions): string {
   img { width: 96px; height: 96px; border-radius: 24px; }
   h1 { font-size: 28px; line-height: 1.2; margin: 20px 0 8px; }
   p { color: #7C7873; margin: 0 0 24px; }
-  a { display: inline-block; background: #E8342B; color: #fff; text-decoration: none; font-weight: 600;
+  a.open { display: inline-block; background: #D62B23; color: #fff; text-decoration: none; font-weight: 600;
       padding: 16px 32px; border-radius: 999px; }
+  .code { margin: 28px 0 0; font-size: 15px; color: #7C7873; }
+  .code b { display: block; margin-top: 4px; font-size: 24px; letter-spacing: 0.08em; color: #1B1A19; font-variant-numeric: tabular-nums; }
+  .get { margin: 20px 0 0; font-size: 15px; }
+  .get a { color: #1B1A19; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -58,7 +66,9 @@ export function invitePage(p: InvitePreview, o: PageOptions): string {
   <img src="${esc(o.base)}/invite-image.png" alt="Rally">
   <h1>${esc(title)}</h1>
   <p>${esc(description)}</p>
-  <a href="${esc(open)}">Open in Rally</a>
+  <a class="open" href="${esc(open)}">Open in Rally</a>
+  <p class="code">Or open Rally and enter this code<b>${esc(formatInviteCode(o.token))}</b></p>
+  ${install ? `<p class="get">Don't have Rally yet? <a href="${esc(install)}">Get the app</a></p>` : ''}
 </main>
 </body>
 </html>`;

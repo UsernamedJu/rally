@@ -12,7 +12,8 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.jean.fitnesschallenge",
       "infoPlist": {
-        "NSContactsUsageDescription": "Pick a friend to text your challenge invite to."
+        "NSContactsUsageDescription": "Pick a friend to text your challenge invite to.",
+        "NSLocalNetworkUsageDescription": "Rally connects to the server running on your Mac while you test it."
       },
       "icon": "./assets/rally.icon",
       "buildNumber": "1",

@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isBand } from '../shared/catalog.ts';
+import { withLastName } from '../shared/copy.ts';
+import type { NameChange } from '../shared/api.ts';
 import type { Activity, Band, ChallengeType, Per, Result, TrackType } from '../shared/catalog.ts';
 
 export type User = {
@@ -20,6 +22,9 @@ export type User = {
   phone: string | null;
   pinSalt: string | null;
   pinHash: string | null;
+  /** Only ever set in memory, by `load()`, while a winner's last name is in effect. `save()` puts it back. */
+  realName?: string;
+  nameChange?: NameChange;
 };
 export type Crew = { userId: string; friendUserId: string };
 export type Challenge = {
@@ -62,6 +67,17 @@ export type Consequence = {
   agreedBy: string[];
   status: 'none' | 'proposed' | 'agreed';
 };
+/** A last name a challenge winner gave the loser. It lasts until `expiresAt`, or until they change it back. */
+export type Rename = {
+  id: string;
+  challengeId: string;
+  userId: string;
+  byUserId: string;
+  lastName: string;
+  createdAt: string;
+  expiresAt: string;
+  revertedAt: string | null;
+};
 export type Invite = { token: string; challengeId: string | null; invitedBy: string; acceptedBy: string[]; createdAt: string };
 export type Removal = {
   id: string;
@@ -81,6 +97,7 @@ export type DB = {
   consequences: Consequence[];
   invites: Invite[];
   removals: Removal[];
+  renames: Rename[];
 };
 
 export class HttpError extends Error {
@@ -133,7 +150,7 @@ const HOUSE: Pick<Challenge, 'id' | 'name' | 'type' | 'target' | 'per' | 'length
 // The file is small enough to read on every request, which also lets the seed script
 // edit it while the server is running.
 export function load(): DB {
-  const db: DB = { users: [], crew: [], challenges: [], members: [], logs: [], consequences: [], invites: [], removals: [] };
+  const db: DB = { users: [], crew: [], challenges: [], members: [], logs: [], consequences: [], invites: [], removals: [], renames: [] };
   if (existsSync(DATA_FILE)) Object.assign(db, JSON.parse(readFileSync(DATA_FILE, 'utf8')));
   for (const u of db.users) {
     if (!isBand(u.band)) u.band = 'active';
@@ -146,12 +163,54 @@ export function load(): DB {
     const created = nowIso();
     db.challenges.push({ ...h, creatorId: null, startAt: created.slice(0, 10), endAt: '9999-12-31', status: 'live', houseChallenge: true, createdAt: created });
   }
+  applyRenames(db);
   return db;
+}
+
+/** The rename in effect for each person right now: newest one that has not run out or been undone. */
+export function activeRenames(db: DB, now = Date.now()): Map<string, Rename> {
+  const latest = new Map<string, Rename>();
+  for (const r of db.renames) {
+    if (r.revertedAt || Date.parse(r.expiresAt) <= now) continue;
+    const prev = latest.get(r.userId);
+    if (!prev || r.createdAt > prev.createdAt) latest.set(r.userId, r);
+  }
+  return latest;
+}
+
+// A changed last name is applied to the loaded copy of each user, so every place that prints a name
+// (cards, standings, "Maria won this one") shows it without knowing it exists. The stored name is
+// never touched: `save()` writes the real one back, and when the rename ends the name simply returns.
+// Safe to call again after a rename is added or undone; it always starts from the real name.
+export function applyRenames(db: DB): void {
+  const active = activeRenames(db);
+  const real = new Map(db.users.map((u) => [u.id, u.realName ?? u.name]));
+  for (const u of db.users) {
+    const base = real.get(u.id)!;
+    const r = active.get(u.id);
+    if (!r) {
+      if (u.realName !== undefined) {
+        u.name = u.realName;
+        delete u.realName;
+        delete u.nameChange;
+      }
+      continue;
+    }
+    u.realName = base;
+    u.name = withLastName(base, r.lastName);
+    u.nameChange = {
+      lastName: r.lastName,
+      by: real.get(r.byUserId) ?? 'A friend',
+      challengeName: db.challenges.find((c) => c.id === r.challengeId)?.name ?? 'a challenge',
+      until: r.expiresAt,
+    };
+  }
 }
 
 export function save(db: DB): void {
   mkdirSync(dirname(DATA_FILE), { recursive: true });
   const tmp = `${DATA_FILE}.tmp`;
-  writeFileSync(tmp, JSON.stringify(db, null, 2));
+  const users = db.users.map(({ realName, nameChange: _change, ...u }) => (realName === undefined ? u : { ...u, name: realName }));
+  writeFileSync(tmp, JSON.stringify({ ...db, users }, null, 2));
   renameSync(tmp, DATA_FILE);
 }
