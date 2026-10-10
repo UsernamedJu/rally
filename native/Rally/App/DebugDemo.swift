@@ -26,7 +26,46 @@ struct DebugDemo: View {
     @State private var party = 0
 
     var body: some View {
-        if Self.flag("RallyDemoFun") { fun } else { water }
+        if Self.flag("RallyDemoWin") { win } else if Self.flag("RallyDemoFun") { fun } else { water }
+    }
+
+    /**
+     * `-RallyDemo YES -RallyDemoWin YES`: a finished challenge that you won, built from made-up data and
+     * never sent to the server. A fresh id each launch, so the once-per-challenge party always plays.
+     */
+    private var win: some View {
+        NavigationStack {
+            if let detail = Self.wonChallenge { ChallengeContent(detail: detail, onChange: { _ in }) }
+        }
+    }
+
+    private static var wonChallenge: ChallengeDetail? {
+        let json = """
+        {
+          "id": "demo-win-\(Int.random(in: 0..<1_000_000))", "name": "Walk it off", "targetText": "3 walks a week for 2 weeks.",
+          "type": "walk", "target": 3, "per": "week", "lengthDays": 14, "numeric": false, "house": false,
+          "status": "done", "daysLeftText": "Ended", "timeFraction": 1, "rangeText": "Sept 25 to Oct 8",
+          "consequence": {"status": "agreed", "text": "Buys coffee", "proposedBy": "Dana", "youProposed": false, "youAgreed": true, "waitingOn": 0},
+          "rename": null,
+          "hero": {"rank": "1st", "progress": "6 of 6", "people": "4"},
+          "fair": false, "yourGoalText": null, "winnerName": "Jean",
+          "resultText": "You won. Sam finished last and buys coffee.",
+          "standings": [
+            {"id": "u1", "name": "Jean", "avatar": 1, "rank": 1, "fraction": 1, "percent": 100, "label": "6 of 6", "goalText": null, "delta": "+1", "isYou": true, "onTheHook": false, "complete": true},
+            {"id": "u2", "name": "Dana", "avatar": 2, "rank": 2, "fraction": 0.83, "percent": 83, "label": "5 of 6", "goalText": null, "delta": "-1", "isYou": false, "onTheHook": false, "complete": false},
+            {"id": "u3", "name": "Priya", "avatar": 4, "rank": 3, "fraction": 0.67, "percent": 67, "label": "4 of 6", "goalText": null, "delta": null, "isYou": false, "onTheHook": false, "complete": false},
+            {"id": "u4", "name": "Sam", "avatar": 5, "rank": 4, "fraction": 0.33, "percent": 33, "label": "2 of 6", "goalText": null, "delta": null, "isYou": false, "onTheHook": true, "complete": false}
+          ],
+          "members": [
+            {"id": "u1", "name": "Jean", "avatar": 1}, {"id": "u2", "name": "Dana", "avatar": 2},
+            {"id": "u3", "name": "Priya", "avatar": 4}, {"id": "u4", "name": "Sam", "avatar": 5}
+          ],
+          "alerts": [],
+          "you": {"member": true, "commissioner": false, "readOnly": true, "result": "won"},
+          "manage": []
+        }
+        """
+        return try? JSONDecoder().decode(ChallengeDetail.self, from: Data(json.utf8))
     }
 
     private var fun: some View {

@@ -7,18 +7,29 @@ import SwiftUI
  */
 struct Trophy3D: View {
     var height: CGFloat = 170
+    /** Called once the 3D scene is built and on screen. RealityKit's first start can stall the app briefly, so anything meant to play alongside the trophy should wait for this. */
+    var onReady: () -> Void = {}
     @Environment(\.accessibilityReduceMotion) private var reduce
     @State private var ready = false
+    @State private var arrived = false
 
     var body: some View {
-        // RealityKit takes a moment to start the first time; let the screen draw first, then fade it in.
-        Group {
-            if ready { scene.transition(.liquid) } else { Color.clear }
+        // RealityKit's first start stalls the app for a moment (seconds in the Simulator). So the page gets
+        // to finish arriving first, with a flat trophy standing in, and only then is the 3D one built.
+        ZStack {
+            if ready { scene.transition(.liquid) }
+            if !arrived {
+                Image(systemName: "trophy.fill")
+                    .font(.system(size: height * 0.42))
+                    .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.84, blue: 0.36), Color(red: 0.85, green: 0.58, blue: 0.12)], startPoint: .top, endPoint: .bottom))
+                    .symbolEffect(.pulse, options: .repeating)
+                    .transition(.liquid)
+            }
         }
         .frame(height: height)
         .task {
-            try? await Task.sleep(for: .milliseconds(350))
-            withAnimation(Motion.wave) { ready = true }
+            try? await Task.sleep(for: .milliseconds(2600))
+            ready = true
         }
         .accessibilityElement()
         .accessibilityLabel("Trophy")
@@ -55,6 +66,10 @@ struct Trophy3D: View {
             rim.position = [0.1, 0.25, -0.3]
             content.add(rim)
 
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                withAnimation(Motion.wave) { arrived = true }
+                onReady()
+            }
             guard !reduce else { return }
             // Drop in from above, overshoot a little, then turn forever.
             var landed = trophy.transform

@@ -126,7 +126,13 @@ struct ChallengeContent<Footer: View>: View {
 
             if let result = detail.resultText {
                 Card {
-                    if detail.winnerName != nil { Trophy3D(height: 170).frame(maxWidth: .infinity) }
+                    if detail.winnerName != nil {
+                        // The confetti waits for the trophy, so the two land together and nothing stalls mid-burst.
+                        Trophy3D(height: 170, onReady: {
+                            if detail.you.result == "won", Splash.claim("won:\(detail.id)") { party += 1 }
+                        })
+                        .frame(maxWidth: .infinity)
+                    }
                     HStack(spacing: Metrics.gap) {
                         Image(systemName: detail.winnerName != nil ? "trophy.fill" : "flag.checkered")
                             .font(.title2)
@@ -212,11 +218,6 @@ struct ChallengeContent<Footer: View>: View {
         }
         // A win is worth a party: once per challenge on this phone, the first time its result is seen.
         .overlay { ConfettiBurst(trigger: party, emoji: ["🏆", "🎉", "👑"]) }
-        .onAppear {
-            if detail.you.result == "won", Splash.claim("won:\(detail.id)") {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { party += 1 }
-            }
-        }
         .animation(Motion.wave, value: recap)
         .task(id: detail) { recap = await Intelligence.recap(detail) }
         .sheet(item: $sheet) { kind in
