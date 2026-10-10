@@ -48,3 +48,5 @@ yarn-error.*
 /native/build-device
 xcuserdata/
 *.xcuserstate
+/native/*.xcarchive
+/native/export

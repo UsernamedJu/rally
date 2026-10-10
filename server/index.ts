@@ -9,7 +9,7 @@ import {
   friendFor, homeFor, houseFor, inviteByToken, inviteFor, invitePreview, isActive, join, logCheckin, meFor,
   meView, memberOf, proposeConsequence, renameLoser, requestRemoval, resetName, settle, signin, signup, undoCheckin, updateMe,
 } from './logic.ts';
-import { appSiteAssociation, invitePage } from './preview.ts';
+import { appSiteAssociation, invitePage, privacyPage } from './preview.ts';
 import { DATA_FILE, HttpError, load, save } from './store.ts';
 import type { Challenge, DB, User } from './store.ts';
 
@@ -148,6 +148,11 @@ function servePublic(req: IncomingMessage, res: ServerResponse, pathname: string
       const message = err instanceof HttpError ? err.message : 'Something went wrong.';
       page(res, err instanceof HttpError ? err.status : 500, 'text/plain; charset=utf-8', message);
     }
+    return true;
+  }
+
+  if (pathname === '/privacy') {
+    page(res, 200, 'text/html; charset=utf-8', privacyPage(process.env.CONTACT_EMAIL));
     return true;
   }
 

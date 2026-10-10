@@ -70,7 +70,11 @@ final class API {
 
     // ---------- links ----------
 
-    func inviteLink(_ token: String) -> String { "fitchallenge://invite/\(token)" }
+    /** A web link when the server has a public address (it taps in Messages and shows the invite page);
+     the app's own link scheme when it is only reachable on the local network. */
+    func inviteLink(_ token: String) -> String {
+        base.hasPrefix("https://") ? "\(base)/invite/\(token)" : "fitchallenge://invite/\(token)"
+    }
 
     // ---------- requests ----------
 
@@ -81,6 +85,8 @@ final class API {
         req.httpMethod = verb
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(Catalog.localDate(), forHTTPHeaderField: "X-Today")
+        // The free ngrok tunnel answers some requests with its own warning page unless this is set.
+        req.setValue("1", forHTTPHeaderField: "ngrok-skip-browser-warning")
         if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         if let body { req.httpBody = try JSONSerialization.data(withJSONObject: body) }
 

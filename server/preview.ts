@@ -82,3 +82,70 @@ export function appSiteAssociation(teamId: string | undefined, bundleId: string)
   if (!teamId) return null;
   return { applinks: { details: [{ appIDs: [`${teamId}.${bundleId}`], components: [{ '/': '/invite/*' }] }] } };
 }
+
+
+/** The privacy policy, in plain words. What it says must stay true to what the server stores. */
+export function privacyPage(contact: string | undefined): string {
+  const reach = contact
+    ? `Email <a href="mailto:${contact}">${contact}</a>.`
+    : 'Use Send Beta Feedback in TestFlight, or the support contact on the app\u2019s page.';
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rally Privacy Policy</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 17px/1.55 -apple-system, system-ui, sans-serif; max-width: 680px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 30px; margin: 0 0 4px; }
+  h2 { font-size: 20px; margin: 32px 0 8px; }
+  p.date { color: #777; margin-top: 0; }
+  li { margin: 6px 0; }
+</style>
+</head>
+<body>
+<h1>Rally Privacy Policy</h1>
+<p class="date">Last updated October 8, 2026</p>
+<p>Rally is an app for doing fitness challenges with friends. This page says what the app keeps about you and why.</p>
+
+<h2>What Rally stores</h2>
+<ul>
+  <li><strong>Your name</strong>, as you typed it, so your friends can see who is who.</li>
+  <li><strong>Your phone number and a 4 digit PIN, only if you add them.</strong> They let you sign back in on another phone. The PIN is stored scrambled (hashed), never as the digits you typed.</li>
+  <li><strong>What you log:</strong> the workouts you record, the challenges you start or join, the consequences your group proposes, and who is in your crew.</li>
+  <li><strong>Your settings:</strong> your reminder time, what you track and your activity level.</li>
+</ul>
+
+<h2>What Rally does not do</h2>
+<ul>
+  <li>No ads, no analytics and no tracking across other apps or websites.</li>
+  <li>Your information is not sold or shared with advertisers.</li>
+  <li>Rally does not read your health data, your location or your photos.</li>
+  <li>Your contacts are not uploaded. When you invite someone, Apple\u2019s own contact picker opens and only the one number you choose is used, on your phone, to start a text message.</li>
+</ul>
+
+<h2>On your phone only</h2>
+<ul>
+  <li>Reminders are scheduled on your phone. Nothing about them is sent to us.</li>
+  <li>The Apple Intelligence features (challenge recaps and consequence ideas) run on your iPhone. That text is not sent to us or to anyone else.</li>
+  <li>Your sign-in is kept in the iPhone\u2019s Keychain.</li>
+</ul>
+
+<h2>Who can see what</h2>
+<p>People in a challenge with you can see your name, your progress in that challenge and whether you logged today. People in your crew can see your name and how many challenges you have completed. Nobody else can see your phone number.</p>
+
+<h2>Where it is kept</h2>
+<p>Rally\u2019s data is stored on a server run for Rally by Fly.io in the United States, and travels between your phone and that server over an encrypted connection.</p>
+
+<h2>Deleting your information</h2>
+<p>Ask and your account and everything attached to it will be deleted. ${reach}</p>
+
+<h2>Children</h2>
+<p>Rally is not meant for children under 13.</p>
+
+<h2>Changes and questions</h2>
+<p>If this policy changes, the date at the top changes with it. Questions: ${reach}</p>
+</body>
+</html>`;
+}

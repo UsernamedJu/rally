@@ -58,7 +58,7 @@ struct MeView: View {
                         }
                         .buttonStyle(WaterButtonStyle())
                     }
-                    ForEach(data.tracked) { TrackedRow(item: $0) }
+                    ForEach(data.tracked) { TrackedRow(item: $0).scrollLively() }
                 }
                 .settles(3)
 
@@ -148,7 +148,7 @@ private struct Stat: View {
             } else {
                 VStack(spacing: 2) {
                     Text(emoji).font(.title3).accessibilityHidden(true)
-                    Text("\(value)").font(.heading).contentTransition(.numericText())
+                    CountUp(value: value).font(.heading)
                     Text(label).font(.footnote).foregroundStyle(Palette.stone).multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -169,7 +169,7 @@ private struct TrackedRow: View {
     var body: some View {
         Card {
             HStack(spacing: Metrics.gap) {
-                EmojiBadge(emoji: Catalog.emoji(item.type), size: 40)
+                EmojiBadge(emoji: Catalog.emoji(item.type), size: 40).popIn(delay: 0.3)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.label).font(.label).foregroundStyle(Palette.stone)
                     Text(item.totalText).font(.heading).minimumScaleFactor(0.8)

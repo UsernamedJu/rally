@@ -2,19 +2,14 @@ import SwiftUI
 
 /**
  * Debug builds only: `xcrun simctl launch booted com.jean.fitnesschallenge -RallyDemo YES` opens this
- * page of the water and 3D pieces, so they can be checked without logging or ending a real challenge.
+ * page of the water, 3D and celebration pieces, so they can be checked without logging or ending a real
+ * challenge. `-RallyDemo YES -RallyDemoFun YES` shows the playful pieces instead.
  */
 struct DebugDemo: View {
     /** `-RallyWelcome YES` shows the signed-out welcome without signing anyone out. */
-    static var welcome: Bool {
-        #if DEBUG
-        UserDefaults.standard.bool(forKey: "RallyWelcome")
-        #else
-        false
-        #endif
-    }
+    static var welcome: Bool { flag("RallyWelcome") }
 
-    /** Any other debug-only launch flag, always off in release builds. */
+    /** Any debug-only launch flag, always off in release builds. */
     static func flag(_ name: String) -> Bool {
         #if DEBUG
         UserDefaults.standard.bool(forKey: name)
@@ -23,19 +18,39 @@ struct DebugDemo: View {
         #endif
     }
 
-    static var requested: Bool {
-        #if DEBUG
-        UserDefaults.standard.bool(forKey: "RallyDemo")
-        #else
-        false
-        #endif
-    }
+    static var requested: Bool { flag("RallyDemo") }
 
     @State private var fraction = 0.25
     @State private var level = 0.0
     @State private var tick = 0
+    @State private var party = 0
 
     var body: some View {
+        if Self.flag("RallyDemoFun") { fun } else { water }
+    }
+
+    private var fun: some View {
+        Page {
+            HStack { Text("Fun").font(.display); WavingHand().font(.display) }
+            SwipeCard { _ in }
+            HStack(spacing: 20) {
+                EmojiBadge(emoji: "🏃").popIn(delay: 0.4)
+                EmojiBadge(emoji: "🏋️").bobbing()
+                CountUp(value: 87, suffix: "%").font(.heading)
+                Spacer()
+            }
+            Text("Banner").frame(maxWidth: .infinity, minHeight: 60).background { AliveGradient() }.clipShape(.rect(cornerRadius: 24))
+            PrimaryButton(title: "Party") { party += 1 }
+        }
+        .background { FloatingEmoji(emoji: ["💪", "🔥", "🎉", "⭐️", "👟"]) }
+        .overlay { ConfettiBurst(trigger: party) }
+        .task {
+            try? await Task.sleep(for: .seconds(2.5))
+            party += 1
+        }
+    }
+
+    private var water: some View {
         Page {
             Text("Water and 3D").font(.display)
             Card { Trophy3D(height: 200).frame(maxWidth: .infinity) }

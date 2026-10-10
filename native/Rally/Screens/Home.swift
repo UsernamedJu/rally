@@ -22,10 +22,14 @@ struct HomeView: View {
     var body: some View {
         Page {
             if let data = remote.data {
-                Text("\(greeting), \(data.user.name). \(greetingEmoji)")
-                    .font(.display)
-                    .accessibilityLabel("\(greeting), \(data.user.name).")
-                    .settles(0)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("\(greeting), \(data.user.name).")
+                    WavingHand(emoji: greetingEmoji)
+                }
+                .font(.display)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(greeting), \(data.user.name).")
+                .settles(0)
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: Metrics.gap) {
@@ -61,12 +65,14 @@ struct HomeView: View {
 
                 if DebugDemo.flag("RallyJoinFirst") { JoinSection(tracked: data.user.trackedTypes) }
 
-                Card(tint: true) {
-                    HStack(alignment: .top, spacing: Metrics.gap) {
-                        Text("💪").font(.title2).accessibilityHidden(true)
-                        Text(Copy.banner())
-                    }
+                HStack(alignment: .top, spacing: Metrics.gap) {
+                    Text("💪").font(.title2).bobbing().accessibilityHidden(true)
+                    Text(Copy.banner())
+                    Spacer(minLength: 0)
                 }
+                .padding(Metrics.card)
+                .background { AliveGradient() }
+                .clipShape(.rect(cornerRadius: Metrics.radius))
                 .settles(2)
 
                 VStack(alignment: .leading, spacing: Metrics.gap) {
@@ -92,6 +98,7 @@ struct HomeView: View {
                                     .padding(.bottom, 4)
                                 }
                             }
+                            .scrollLively()
                             .settles(4 + i)
                             .transition(.liquid)
                     }
@@ -190,6 +197,7 @@ struct JoinSection: View {
                 }
                 .padding(Metrics.card - 4)
                 .background(Palette.card, in: .rect(cornerRadius: Metrics.radius))
+                .scrollLively()
             }
             Button { inviteOpen = true } label: {
                 HStack(spacing: Metrics.gap) {
@@ -240,7 +248,7 @@ struct ChallengeCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: Metrics.gap) {
-                EmojiBadge(emoji: Catalog.emoji(card.kind))
+                EmojiBadge(emoji: Catalog.emoji(card.kind)).popIn(delay: 0.25)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(card.name).font(.headline).lineLimit(2).multilineTextAlignment(.leading)
                     // What the challenge is. Two with the same name are told apart by this line.
@@ -277,9 +285,10 @@ struct ChallengeCardView: View {
         .overlay { if splash { Splash() } }
         .onAppear {
             if card.complete, Splash.claim(card.id) { splash = true }
-            if let from, from != card.fraction {
-                shown = from
-                withAnimation(reduce ? nil : Motion.wave.delay(0.35)) { shown = card.fraction }
+            // The ring always sweeps up to its level: from the last value after a log, from empty otherwise.
+            if !reduce {
+                shown = from ?? 0
+                withAnimation(Motion.wave.delay(0.35)) { shown = card.fraction }
             }
         }
         .onChange(of: card.fraction) { _, f in withAnimation(reduce ? nil : Motion.wave) { shown = f } }

@@ -6,6 +6,8 @@ struct CheckInView: View {
     @State private var holding = false
     @State private var round = 0
     @State private var level = 0.0
+    @State private var party = 0
+    @State private var justLogged = false
 
     var body: some View {
         Group {
@@ -23,21 +25,36 @@ struct CheckInView: View {
                         }
                         Text("You're in for today 🎉").font(.display).multilineTextAlignment(.center)
                             .accessibilityLabel("You're in for today")
-                        Text(data.streak == 1 ? "📈 1 day streak" : "📈 \(data.streak) day streak")
-                            .font(.label).foregroundStyle(Palette.stone)
-                            .contentTransition(.numericText())
+                        HStack(spacing: 6) {
+                            Text("📈").accessibilityHidden(true)
+                            CountUp(value: data.streak)
+                            Text(data.streak == 1 ? "day streak" : "day streak")
+                        }
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Palette.stone)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(data.streak) day streak")
                         Spacer()
                         Spacer()
                     }
                     .padding(Metrics.screen)
-                    .background { WaterBackdrop() }
+                    .background {
+                        WaterBackdrop()
+                        FloatingEmoji(emoji: ["💪", "🔥", "🎉", "⭐️", "👟"], opacity: 0.35)
+                    }
+                    .overlay { ConfettiBurst(trigger: party) }
                     .onAppear {
                         level = 0
                         withAnimation(.easeOut(duration: 1.4)) { level = 1 }
+                        // Only right after logging, not every time the tab is opened.
+                        if justLogged {
+                            justLogged = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { party += 1 }
+                        }
                     }
                     .transition(.liquid)
                 } else {
-                    LogFlow(data: data, preset: nil, onLogged: { holding = true }, onFinish: {
+                    LogFlow(data: data, preset: nil, onLogged: { holding = true; justLogged = true }, onFinish: {
                         Task {
                             await remote.load()
                             withAnimation(Motion.wave) {
@@ -103,6 +120,7 @@ struct LogFlow: View {
     @State private var result: CheckinResult?
     @State private var busy = false
     @State private var error: String?
+    @State private var party = 0
 
     private var open: [CheckinChallenge] { data.challenges.filter { !$0.loggedToday } }
     private var chosen: [CheckinChallenge] { open.filter { picked.contains($0.id) } }
@@ -127,6 +145,7 @@ struct LogFlow: View {
         } footer: {
             footer
         }
+        .overlay { ConfettiBurst(trigger: party, emoji: ["🎉", "💪", Catalog.emoji(activity ?? "other")]) }
         .animation(Motion.wave, value: phase)
         .onAppear {
             if let preset, picked.isEmpty {
@@ -244,8 +263,8 @@ struct LogFlow: View {
             let res: CheckinResult = try await api.send("/checkin", body: ["activity": activity, "entries": entries])
             result = res
             onLogged()
-            Haptic.success()
             withAnimation(Motion.wave) { phase = .logged }
+            party += 1
         } catch {
             withAnimation(Motion.fluid) { self.error = error.localizedDescription }
         }
@@ -271,31 +290,45 @@ struct SwipeCard: View {
     @State private var drag: CGSize = .zero
     @State private var gone: CGFloat = 0
     @State private var hinted = -1
+    @State private var nudge: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduce
 
     var body: some View {
-        let x = drag.width + gone
+        let x = drag.width + gone + nudge
+        // How far toward a decision the card is: -1 is a firm "not today", 1 a firm "yes".
+        let lean = max(-1, min(1, Double(x) / 130))
         VStack(spacing: 16) {
-            Image(systemName: x > 40 ? "hand.thumbsup.fill" : x < -40 ? "moon.zzz.fill" : "figure.mixed.cardio")
-                .font(.system(size: 60, weight: .semibold))
-                .foregroundStyle(x > 40 ? Palette.accent : Palette.ink)
-                .contentTransition(.symbolEffect(.replace))
+            Text(lean > 0.25 ? "💪" : lean < -0.25 ? "😴" : "🤔")
+                .font(.system(size: 76))
+                .scaleEffect(1 + abs(lean) * 0.35)
+                .rotationEffect(.degrees(lean * -12))
+                .contentTransition(.opacity)
+                .accessibilityHidden(true)
             Text("👉 Swipe right for yes.\n👈 Swipe left for not today.")
                 .font(.label)
                 .foregroundStyle(Palette.stone)
                 .multilineTextAlignment(.center)
+                .opacity(1 - abs(lean))
         }
         .frame(maxWidth: .infinity, minHeight: 300)
-        .background(Palette.card, in: .rect(cornerRadius: 32))
-        .overlay(RoundedRectangle(cornerRadius: 32).strokeBorder(x > 40 ? Palette.accent : .clear, lineWidth: 2))
+        .background {
+            RoundedRectangle(cornerRadius: 32).fill(Palette.card)
+            // The card warms toward green for yes and cools to grey for not today.
+            RoundedRectangle(cornerRadius: 32).fill(lean > 0 ? Palette.done : Palette.stone).opacity(abs(lean) * 0.22)
+        }
+        .overlay(alignment: .topLeading) { stamp("YES!", color: Palette.done, tilt: -14).opacity(max(0, lean * 1.4 - 0.2)).padding(22) }
+        .overlay(alignment: .topTrailing) { stamp("NOT TODAY", color: Palette.stone, tilt: 12).opacity(max(0, -lean * 1.4 - 0.2)).padding(22) }
         .offset(x: x, y: abs(x) * 0.08)
         .rotationEffect(.degrees(Double(x) / 18), anchor: .bottom)
-        .animation(Motion.fluid, value: x > 40)
+        .shadow(color: .black.opacity(0.08 + abs(lean) * 0.1), radius: 12 + abs(lean) * 10, y: 6)
+        .animation(Motion.fluid, value: lean > 0.25)
+        .animation(Motion.fluid, value: lean < -0.25)
         .gesture(
             DragGesture()
                 .onChanged { g in
                     drag = g.translation
                     let side = g.translation.width > 100 ? 1 : g.translation.width < -100 ? 0 : -1
-                    if side != hinted, side >= 0 { Haptic.select() }
+                    if side != hinted, side >= 0 { Haptic.tap(.rigid) }
                     hinted = side
                 }
                 .onEnded { g in
@@ -313,9 +346,26 @@ struct SwipeCard: View {
                     }
                 }
         )
+        .onAppear {
+            // A little shimmy on arrival shows the card can be swiped.
+            guard !reduce else { return }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.45).delay(0.7)) { nudge = 26 }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.5).delay(1.0)) { nudge = 0 }
+        }
         .accessibilityElement()
         .accessibilityLabel("Did you work out today?")
         .accessibilityAction(named: "Yes") { onDecide(true) }
         .accessibilityAction(named: "Not today") { onDecide(false) }
+    }
+
+    private func stamp(_ text: String, color: Color, tilt: Double) -> some View {
+        Text(text)
+            .font(.system(.title2, design: .rounded).weight(.heavy))
+            .foregroundStyle(color)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(color, lineWidth: 3))
+            .rotationEffect(.degrees(tilt))
+            .accessibilityHidden(true)
     }
 }

@@ -37,6 +37,7 @@ struct ChallengeContent<Footer: View>: View {
     @State private var busy: String?
     @State private var error: String?
     @State private var recap: String?
+    @State private var party = 0
     @Environment(\.dynamicTypeSize) private var dynamicType
 
     private var live: Bool { !detail.you.readOnly }
@@ -64,6 +65,7 @@ struct ChallengeContent<Footer: View>: View {
                 .overlay(alignment: .bottomLeading) {
                     EmojiBadge(emoji: Catalog.emoji(detail.type), size: 60, tint: Palette.card)
                         .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+                        .bobbing()
                         .padding(.leading, 14)
                         .offset(y: 18)
                 }
@@ -84,7 +86,7 @@ struct ChallengeContent<Footer: View>: View {
 
             if detail.standings.count >= 2, detail.status == "live", let leader = detail.standings.first, leader.percent > 0 {
                 HStack(spacing: Metrics.gap) {
-                    Text("👑").font(.title2).accessibilityHidden(true)
+                    Text("👑").font(.title2).bobbing().accessibilityHidden(true)
                     Text(leader.isYou ? "You're in the lead. Keep it that way." : "\(leader.name) is in the lead.")
                         .font(.label)
                     Spacer(minLength: 0)
@@ -208,6 +210,13 @@ struct ChallengeContent<Footer: View>: View {
                 footer
             }
         }
+        // A win is worth a party: once per challenge on this phone, the first time its result is seen.
+        .overlay { ConfettiBurst(trigger: party, emoji: ["🏆", "🎉", "👑"]) }
+        .onAppear {
+            if detail.you.result == "won", Splash.claim("won:\(detail.id)") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { party += 1 }
+            }
+        }
         .animation(Motion.wave, value: recap)
         .task(id: detail) { recap = await Intelligence.recap(detail) }
         .sheet(item: $sheet) { kind in
@@ -303,7 +312,7 @@ private struct YourProgressCard: View {
                         .trim(from: 0, to: shown)
                         .stroke(row.complete ? Palette.done : Palette.signal, style: StrokeStyle(lineWidth: 10, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                    Text("\(row.percent)%")
+                    CountUp(value: row.percent, suffix: "%")
                         .font(.system(.title3, design: .rounded).weight(.bold))
                         .contentTransition(.numericText())
                 }
@@ -359,7 +368,7 @@ private struct StandingRow: View {
     var body: some View {
         HStack(spacing: 10) {
             if let medal {
-                Text(medal).font(.title3).frame(width: 26).accessibilityHidden(true)
+                Text(medal).font(.title3).frame(width: 26).popIn(delay: 0.4 + Double(row.rank) * 0.12).accessibilityHidden(true)
             } else {
                 Text("\(row.rank)")
                     .font(.caption.weight(.semibold))
