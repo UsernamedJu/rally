@@ -24,9 +24,15 @@ struct DebugDemo: View {
     @State private var level = 0.0
     @State private var tick = 0
     @State private var party = 0
+    @State private var demoDraft: WorkoutDraft = {
+        var d = WorkoutDraft()
+        d.minutes = 45
+        d.exercises = [ExerciseDraft(name: "Squat", sets: "3", reps: "8", weight: "135")]
+        return d
+    }()
 
     var body: some View {
-        if Self.flag("RallyDemoWin") { win } else if Self.flag("RallyDemoFun") { fun } else { water }
+        if Self.flag("RallyDemoLog") { log } else if Self.flag("RallyDemoWin") { win } else if Self.flag("RallyDemoFun") { fun } else { water }
     }
 
     /**
@@ -61,11 +67,27 @@ struct DebugDemo: View {
             {"id": "u3", "name": "Priya", "avatar": 4}, {"id": "u4", "name": "Sam", "avatar": 5}
           ],
           "alerts": [],
-          "you": {"member": true, "commissioner": false, "readOnly": true, "result": "won"},
+          "you": {"member": true, "commissioner": false, "readOnly": true, "result": "won", "loggedToday": false, "medal": "gold"},
           "manage": []
         }
         """
         return try? JSONDecoder().decode(ChallengeDetail.self, from: Data(json.utf8))
+    }
+
+    /** `-RallyDemo YES -RallyDemoLog YES`: the workout detail fields, a log row and the medals. */
+    private var log: some View {
+        Page {
+            HStack(alignment: .bottom, spacing: 18) {
+                MedalView(kind: .gold, emoji: "🏃")
+                MedalView(kind: .goal, emoji: "🏋️")
+                MedalView(kind: .locked, emoji: "")
+            }
+            WorkoutRow(workout: Workout(
+                id: "w1", date: "2026-10-11", dateText: "Sunday, Oct 11", activity: "gym", activityLabel: "Gym", minutes: 45,
+                note: "Leg day. Felt strong.", exercises: [Exercise(name: "Squat", sets: 3, reps: 8, weight: 135), Exercise(name: "Leg press", sets: 3, reps: 10, weight: 270)],
+                shared: true, countedToward: ["Gym challenge"]))
+            Card { WorkoutDetailFields(draft: $demoDraft) }
+        }
     }
 
     private var fun: some View {

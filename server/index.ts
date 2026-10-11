@@ -4,7 +4,7 @@ import http from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { isDate, localDate } from '../shared/catalog.ts';
 import {
-  deleteChallenge,
+  deleteChallenge, syncSteps, updateWorkout, workoutLog,
   acceptInvite, agreeConsequence, canView, challengeById, checkinFor, createChallenge, detailFor, endEarly,
   friendFor, homeFor, houseFor, inviteByToken, inviteFor, invitePreview, isActive, join, logCheckin, meFor,
   meView, memberOf, proposeConsequence, renameLoser, requestRemoval, resetName, settle, signin, signup, undoCheckin, updateMe,
@@ -23,7 +23,8 @@ const open = (method: string, path: string, run: (ctx: OpenCtx) => unknown) =>
 const route = (method: string, path: string, run: (ctx: Ctx) => unknown) =>
   routes.push({ method, path: path.split('/').filter(Boolean), auth: true, run });
 
-open('GET', '/api/health', () => ({ ok: true }));
+// `latestBuild` is the newest build testers can install. An older app uses it to say an update is ready.
+open('GET', '/api/health', () => ({ ok: true, latestBuild: Number(process.env.LATEST_BUILD ?? 0) }));
 open('POST', '/api/signup', ({ db, today, body }) => signup(db, today, body));
 open('POST', '/api/signin', ({ db, body }) => signin(db, body));
 open('GET', '/api/invites/:token', ({ db, today, user, params }) => invitePreview(db, inviteByToken(db, params.token), user, today));
@@ -39,6 +40,9 @@ route('GET', '/api/checkin', ({ db, user, today }) => checkinFor(db, user, today
 route('POST', '/api/checkin', ({ db, user, today, body }) => logCheckin(db, user, today, body));
 route('POST', '/api/checkin/undo', ({ db, user, today, body }) => undoCheckin(db, user, today, body));
 route('GET', '/api/house', ({ db, user, today }) => houseFor(db, user, today));
+route('GET', '/api/workouts', ({ db, user }) => workoutLog(db, user));
+route('PATCH', '/api/workouts/:id', ({ db, user, params, body }) => updateWorkout(db, user, params.id, body));
+route('POST', '/api/steps', ({ db, user, today, body }) => syncSteps(db, user, today, body));
 route('POST', '/api/challenges', ({ db, user, today, body }) => createChallenge(db, user, today, body));
 route('POST', '/api/invites/:token/accept', ({ db, user, today, params }) => ({
   challengeId: acceptInvite(db, inviteByToken(db, params.token), user, today),

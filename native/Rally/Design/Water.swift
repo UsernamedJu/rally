@@ -214,19 +214,16 @@ private struct SettleModifier: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduce
 
     func body(content: Content) -> some View {
-        Group {
-            if settling && !reduce {
-                // Only while the surface is still moving; afterwards the view is plain again.
-                TimelineView(.animation(minimumInterval: 1 / 60)) { ctx in
-                    let t = ctx.date.timeIntervalSince(start)
-                    content.visualEffect { view, proxy in
-                        view.distortionEffect(
-                            ShaderLibrary.settle(.float2(proxy.size), .float(t), .float(2.2)),
-                            maxSampleOffset: CGSize(width: 3, height: 2))
-                    }
-                }
-            } else {
-                content
+        // One structure for the whole life of the view. Swapping between a plain branch and a rippling
+        // branch would make SwiftUI rebuild everything inside each time, and every entrance animation in
+        // there would play twice. The timeline is simply paused when nothing is moving.
+        TimelineView(.animation(minimumInterval: 1 / 60, paused: !settling || reduce)) { timeline in
+            let t = timeline.date.timeIntervalSince(start)
+            content.visualEffect { [settling, reduce] view, proxy in
+                view.distortionEffect(
+                    ShaderLibrary.settle(.float2(proxy.size), .float(t), .float(2.2)),
+                    maxSampleOffset: CGSize(width: 3, height: 2),
+                    isEnabled: settling && !reduce)
             }
         }
         .opacity(shown ? 1 : 0)

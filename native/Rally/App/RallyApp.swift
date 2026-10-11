@@ -5,6 +5,7 @@ import SwiftUI
 struct RallyApp: App {
     @State private var api = API.shared
     @State private var router = Router()
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage(Appearance.key) private var appearance = Appearance.fallback.rawValue
 
     var body: some Scene {
@@ -14,6 +15,8 @@ struct RallyApp: App {
                 .environment(router)
                 .tint(Palette.accent)
                 .onOpenURL { router.open($0) }
+                // Each time Rally comes to the front, today's steps go to any steps challenges.
+                .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await StepSync.shared.sync() } } }
                 .onAppear { Appearance.apply(DebugDemo.flag("RallyDark") ? .dark : AppearanceChoice(rawValue: appearance) ?? Appearance.fallback) }
                 .onChange(of: appearance) { _, v in Appearance.apply(AppearanceChoice(rawValue: v) ?? Appearance.fallback) }
         }
@@ -24,6 +27,7 @@ enum Route: Hashable {
     case challenge(String)
     case settings
     case join
+    case workouts
     case signup
     case signin(invite: String?)
 }
@@ -34,7 +38,8 @@ struct InviteLink: Identifiable, Hashable { var token: String; var id: String { 
 
 @Observable
 final class Router {
-    var tab: AppTab = .home
+    /** Debug only: -RallyStartMe YES opens on the Me tab. */
+    var tab: AppTab = DebugDemo.flag("RallyStartMe") ? .me : .home
     var home: [Route] = []
     var me: [Route] = []
     var auth: [Route] = []
@@ -106,6 +111,7 @@ extension View {
 struct RootView: View {
     @Environment(API.self) private var api
     @Environment(Router.self) private var router
+    @State private var whatsNew = false
 
     var body: some View {
         @Bindable var router = router
@@ -135,6 +141,24 @@ struct RootView: View {
             InviteView(token: link.token)
                 .environment(api)
                 .environment(router)
+                .overlay { ToastHost() }
+        }
+        // Banners sit above everything, including the tab bar and navigation.
+        .overlay { ToastHost() }
+        .sheet(isPresented: $whatsNew) { WhatsNewSheet() }
+        .onAppear {
+            // Debug only: -RallyToastDemo YES plays a few sample banners.
+            if DebugDemo.flag("RallyToastDemo") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    Toaster.shared.show(Toast(emoji: "👀", title: "Dana logged today", detail: "Your turn?", actionTitle: "Check in", action: {}, seconds: 4))
+                    Toaster.shared.show(Toast(emoji: "✨", title: "A new version of Rally is ready", detail: "Update in TestFlight to get it.", actionTitle: "Update", action: {}, seconds: 4))
+                    Toaster.shared.show(Toast(emoji: "💡", title: "Did you know?", detail: FunFacts.all[6], seconds: 5))
+                }
+                return
+            }
+            if !DebugDemo.requested, WhatsNew.shouldShow(signedIn: api.signedIn) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { whatsNew = true }
+            }
         }
     }
 }
@@ -204,6 +228,7 @@ extension View {
             case .challenge(let id): ChallengeScreen(id: id)
             case .settings: SettingsView()
             case .join: JoinView()
+            case .workouts: WorkoutLogView()
             default: EmptyView()
             }
         }

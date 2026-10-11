@@ -186,6 +186,60 @@ struct SymbolArt: View {
 }
 
 /**
+ * A challenge medal: a ribbon and a disc with the challenge's emoji struck into it. Gold for winning,
+ * Rally red for reaching your goal, and a dull blank while it is still locked.
+ */
+struct MedalView: View {
+    enum Kind { case gold, goal, locked }
+    var kind: Kind
+    var emoji: String
+    var size: CGFloat = 72
+
+    static func kind(_ medal: String?) -> Kind? {
+        switch medal {
+        case "gold": .gold
+        case "goal": .goal
+        default: nil
+        }
+    }
+
+    private var metal: [Color] {
+        switch kind {
+        case .gold: [Color(red: 1.0, green: 0.87, blue: 0.42), Color(red: 0.86, green: 0.60, blue: 0.13)]
+        case .goal: [Color(red: 0.98, green: 0.45, blue: 0.40), Color(red: 0.72, green: 0.13, blue: 0.10)]
+        case .locked: [Color(uiColor: .systemGray3), Color(uiColor: .systemGray4)]
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: -size * 0.16) {
+            // The ribbon: two tails meeting behind the disc.
+            HStack(spacing: size * 0.04) {
+                ForEach(0..<2, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(kind == .locked ? Color(uiColor: .systemGray4) : i == 0 ? Palette.signal : Palette.accent)
+                        .frame(width: size * 0.2, height: size * 0.42)
+                        .rotationEffect(.degrees(i == 0 ? 14 : -14), anchor: .bottom)
+                }
+            }
+            Circle()
+                .fill(LinearGradient(colors: metal, startPoint: .topLeading, endPoint: .bottomTrailing))
+                .overlay(Circle().strokeBorder(.white.opacity(kind == .locked ? 0.15 : 0.45), lineWidth: size * 0.045).padding(size * 0.06))
+                .overlay {
+                    if kind == .locked {
+                        Image(systemName: "lock.fill").font(.system(size: size * 0.3, weight: .semibold)).foregroundStyle(Color(uiColor: .systemGray))
+                    } else {
+                        Text(emoji).font(.system(size: size * 0.42))
+                    }
+                }
+                .frame(width: size, height: size)
+                .shadow(color: metal[1].opacity(kind == .locked ? 0 : 0.45), radius: size * 0.12, y: size * 0.05)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/**
  * A photo across the top of a card or screen, washed toward Rally's colors so it sits in the design
  * rather than on top of it: a faint red cast, and a fade into whatever is underneath. Photos live in
  * `Photos/` as `photo-<name>.jpg`. Where there is no photo for a name, a soft tile with the emoji stands in.

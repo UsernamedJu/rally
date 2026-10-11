@@ -62,6 +62,59 @@ struct MeView: View {
                 }
                 .settles(3)
 
+                let medals = data.past.filter { $0.medal != nil }
+                VStack(alignment: .leading, spacing: Metrics.gap) {
+                    Text("Medals").font(.heading)
+                    if medals.isEmpty {
+                        Card {
+                            HStack(spacing: Metrics.gap) {
+                                MedalView(kind: .locked, emoji: "", size: 48)
+                                Text("Reach your goal in a challenge to earn your first medal. Win it and it's gold.")
+                            }
+                        }
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(alignment: .top, spacing: Metrics.gap) {
+                                ForEach(Array(medals.enumerated()), id: \.offset) { i, p in
+                                    Button { router.me.append(.challenge(p.id)) } label: {
+                                        VStack(spacing: 8) {
+                                            MedalView(kind: MedalView.kind(p.medal) ?? .goal, emoji: Catalog.emoji(p.type ?? "custom"), size: 66)
+                                                .popIn(delay: 0.3 + Double(i) * 0.1)
+                                            Text(p.name).font(.footnote.weight(.medium)).foregroundStyle(Palette.ink)
+                                                .lineLimit(2).multilineTextAlignment(.center)
+                                        }
+                                        .frame(width: 92)
+                                    }
+                                    .buttonStyle(WaterButtonStyle())
+                                    .accessibilityLabel("\(p.medal == "gold" ? "Gold medal" : "Medal"), \(p.name)")
+                                }
+                            }
+                            .padding(.horizontal, Metrics.screen)
+                            .padding(.vertical, 4)
+                        }
+                        .padding(.horizontal, -Metrics.screen)
+                    }
+                }
+                .settles(3)
+
+                Button { router.me.append(.workouts) } label: {
+                    HStack(spacing: Metrics.gap) {
+                        EmojiBadge(emoji: "📒", size: 40)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Workout log").font(.headline)
+                            Text("Everything you've logged, with your details.").font(.footnote).foregroundStyle(Palette.stone)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Palette.faint)
+                    }
+                    .multilineTextAlignment(.leading)
+                    .foregroundStyle(Palette.ink)
+                    .padding(Metrics.card - 4)
+                    .background(Palette.card, in: .rect(cornerRadius: Metrics.radius))
+                }
+                .buttonStyle(WaterButtonStyle())
+                .settles(4)
+
                 VStack(alignment: .leading, spacing: Metrics.gap) {
                     Text("Past challenges").font(.heading)
                     if data.past.isEmpty {
@@ -287,6 +340,21 @@ struct SettingsView: View {
                 }
             } footer: {
                 Text("Sets your own step and mile goals in fair play challenges.")
+            }
+
+            if StepSync.shared.available {
+                Section {
+                    Toggle("Count my steps automatically", isOn: Binding(get: { StepSync.shared.enabled }, set: { StepSync.shared.enabled = $0 }))
+                    if let today = StepSync.shared.today, StepSync.shared.enabled {
+                        LabeledContent("Today", value: "\(Catalog.fmt(Double(today))) steps")
+                    }
+                } header: {
+                    Text("Steps")
+                } footer: {
+                    Text(StepSync.shared.denied
+                         ? "Rally isn't allowed to read steps. Turn on Motion & Fitness for Rally in the iPhone's Settings app."
+                         : "Your iPhone counts steps on its own. With this on, today's count goes into your steps challenges each time you open Rally, so there's nothing to type.")
+                }
             }
 
             Section("Sign-in phone") {

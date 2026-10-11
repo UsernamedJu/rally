@@ -122,6 +122,8 @@ struct HomeView: View {
         .task(id: remote.data?.user.workoutTime) {
             guard let d = remote.data else { return }
             await Reminders.schedule(enabled: d.user.notifications, time: d.user.workoutTime, friend: d.crew.first?.name)
+            await StepSync.shared.sync()
+            await Nudges.afterHomeLoads(d, router: router)
         }
         .sheet(item: $friend) { FriendSheet(friend: $0) }
         .sheet(isPresented: $adding) { AddCrewSheet() }
@@ -131,7 +133,7 @@ struct HomeView: View {
                 Task {
                     do {
                         let _: Empty = try await api.send("/challenges/\(c.id)/delete", body: [:])
-                        Haptic.success()
+                        Toaster.shared.confirm("🗑️", "\(c.name) deleted")
                         withAnimation(Motion.wave) { remote.data?.challenges.removeAll { $0.id == c.id } }
                     } catch {
                         deleteError = error.localizedDescription
@@ -225,7 +227,7 @@ struct JoinSection: View {
         error = nil
         do {
             let _: ChallengeDetail = try await api.send("/challenges/\(h.id)/join", body: [:])
-            Haptic.success()
+            Toaster.shared.show(Toast(emoji: "🙌", title: "You're in \(h.name)", detail: "Log your first one whenever you're ready."))
             router.home.append(.challenge(h.id))
         } catch {
             self.error = error.localizedDescription
@@ -346,9 +348,17 @@ struct FriendSheet: View {
             }
             row("✅  Challenges completed", info.map { "\($0.completed)" })
             row("🏆  Biggest win", info.map { $0.biggestWin ?? "No wins yet" })
+            if let recent = info?.recent, !recent.isEmpty {
+                Text("Shared workouts").font(.label).foregroundStyle(Palette.stone)
+                ScrollView {
+                    VStack(spacing: Metrics.gap) {
+                        ForEach(recent) { WorkoutRow(workout: $0, showsPrivacy: false) }
+                    }
+                }
+            }
         }
         .padding(Metrics.screen)
-        .presentationDetents([.height(240)])
+        .presentationDetents(info?.recent?.isEmpty == false ? [.medium, .large] : [.height(240)])
         .task { info = try? await api.send("/crew/\(friend.id)") }
     }
 
@@ -396,7 +406,10 @@ struct AddCrewSheet: View {
                 case .contacts: await Share.textContact(message)
                 case .share: await Share.sheet(message)
                 }
-                if outcome == .sent { dismiss() }
+                if outcome == .sent {
+                    Toaster.shared.confirm("📨", "Invite sent")
+                    dismiss()
+                }
             } catch {
                 self.error = error.localizedDescription
             }

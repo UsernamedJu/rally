@@ -231,7 +231,10 @@ struct InviteComposer: View {
                 case "contacts": await Share.textContact(message)
                 default: await Share.sheet(message)
                 }
-                if outcome == .sent { onFinish() }
+                if outcome == .sent {
+                    Toaster.shared.confirm("📨", "Invite sent")
+                    onFinish()
+                }
             } catch {
                 self.error = error.localizedDescription
             }

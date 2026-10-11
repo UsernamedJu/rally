@@ -1,5 +1,5 @@
 // The JSON shapes the API returns. Screens render these directly; the server does the math.
-import type { Band, ChallengeType, Per, Result, TrackType } from './catalog.ts';
+import type { Activity, Band, ChallengeType, Per, Result, TrackType } from './catalog.ts';
 
 export type Person = { id: string; name: string; avatar: number };
 
@@ -44,7 +44,28 @@ export type HomeData = {
   challenges: ChallengeCard[];
 };
 
-export type FriendData = Person & { completed: number; biggestWin: string | null };
+/** One logged workout, with whatever extra detail its owner chose to add. */
+export type Exercise = { name: string; sets: number | null; reps: number | null; weight: number | null };
+export type Workout = {
+  /** The check-in it belongs to. */
+  id: string;
+  date: string;
+  dateText: string;
+  activity: Activity;
+  activityLabel: string;
+  minutes: number | null;
+  note: string;
+  exercises: Exercise[];
+  /** Shared workouts are visible to your crew. Private is the default. */
+  shared: boolean;
+  /** Names of the challenges it counted toward. */
+  countedToward: string[];
+};
+
+/** A medal earned by a finished challenge: gold for winning it, goal for reaching your own goal. */
+export type Medal = 'gold' | 'goal';
+
+export type FriendData = Person & { completed: number; biggestWin: string | null; recent: Workout[] };
 
 export type Standing = Person & {
   rank: number;
@@ -116,7 +137,13 @@ export type ChallengeDetail = {
   standings: Standing[];
   members: Person[];
   alerts: string[];
-  you: { member: boolean; commissioner: boolean; readOnly: boolean; result: Result | null };
+  you: {
+    member: boolean; commissioner: boolean; readOnly: boolean; result: Result | null;
+    /** A session challenge takes one log a day; this is whether today's is in. Always false for steps and miles. */
+    loggedToday: boolean;
+    /** Set once the challenge is over, if you earned one. */
+    medal: Medal | null;
+  };
   manage: (Person & { pending: boolean })[];
 };
 
@@ -142,7 +169,7 @@ export type TrackedCard = {
   todayIndex: number;
 };
 
-export type PastRow = { id: string; name: string; rangeText: string; result: 'Won' | 'Finished' | 'Dropped' };
+export type PastRow = { id: string; name: string; type: ChallengeType; rangeText: string; result: 'Won' | 'Finished' | 'Dropped'; medal: Medal | null };
 
 export type MeData = {
   user: Me;

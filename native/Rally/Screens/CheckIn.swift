@@ -35,6 +35,8 @@ struct CheckInView: View {
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("\(data.streak) day streak")
                         Spacer()
+                        // The day's part is done: something small and interesting as a thank-you.
+                        FunFactCard()
                         Spacer()
                     }
                     .padding(Metrics.screen)
@@ -49,6 +51,8 @@ struct CheckInView: View {
                         // Only right after logging, not every time the tab is opened.
                         if justLogged {
                             justLogged = false
+                            let streak = data.streak
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { Nudges.streakReached(streak) }
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { party += 1 }
                         }
                     }
@@ -121,6 +125,8 @@ struct LogFlow: View {
     @State private var busy = false
     @State private var error: String?
     @State private var party = 0
+    @State private var details = WorkoutDraft()
+    @State private var showDetails = false
 
     private var open: [CheckinChallenge] { data.challenges.filter { !$0.loggedToday } }
     private var chosen: [CheckinChallenge] { open.filter { picked.contains($0.id) } }
@@ -202,9 +208,20 @@ struct LogFlow: View {
                 .padding(.top, 8)
                 .transition(.liquid)
             }
+            // Optional, and folded away: logging stays one tap for anyone who does not want more.
+            DisclosureGroup(isExpanded: $showDetails) {
+                WorkoutDetailFields(draft: $details).padding(.top, 8)
+            } label: {
+                Label(details.isEmpty ? "Add details" : "Details added", systemImage: details.isEmpty ? "square.and.pencil" : "checkmark.circle.fill")
+                    .font(.label)
+                    .foregroundStyle(details.isEmpty ? Palette.ink : Palette.done)
+            }
+            .tint(Palette.stone)
+            .padding(.top, 8)
             ErrorLine(text: error)
         }
         .animation(Motion.fluid, value: numericTypes)
+        .animation(Motion.fluid, value: showDetails)
     }
 
     @ViewBuilder private var logged: some View {
@@ -260,7 +277,9 @@ struct LogFlow: View {
             return e
         }
         do {
-            let res: CheckinResult = try await api.send("/checkin", body: ["activity": activity, "entries": entries])
+            var body: [String: Any] = ["activity": activity, "entries": entries]
+            if !details.isEmpty { body["details"] = details.payload }
+            let res: CheckinResult = try await api.send("/checkin", body: body)
             result = res
             onLogged()
             withAnimation(Motion.wave) { phase = .logged }

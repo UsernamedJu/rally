@@ -84,6 +84,14 @@ struct ChallengeContent<Footer: View>: View {
                 YourProgressCard(row: me, waiting: detail.status == "waiting").settles(1)
             }
 
+            if detail.you.member || detail.you.medal != nil {
+                RewardCard(detail: detail).settles(1)
+            }
+
+            if detail.type == "steps", live {
+                StepsNote().settles(1)
+            }
+
             if detail.standings.count >= 2, detail.status == "live", let leader = detail.standings.first, leader.percent > 0 {
                 HStack(spacing: Metrics.gap) {
                     Text("👑").font(.title2).bobbing().accessibilityHidden(true)
@@ -210,7 +218,18 @@ struct ChallengeContent<Footer: View>: View {
         } footer: {
             if Footer.self == EmptyView.self {
                 if live {
-                    PrimaryButton(title: "Log today", symbol: "plus.circle.fill") { router.logging = detail.id }
+                    if detail.you.loggedToday == true {
+                        // A session challenge takes one log a day, so once it is in the button says so.
+                        Label("Logged today", systemImage: "checkmark.circle.fill")
+                            .font(.headline)
+                            .foregroundStyle(Palette.done)
+                            .frame(maxWidth: .infinity, minHeight: 54)
+                            .background(Palette.card, in: .capsule)
+                            .overlay(Capsule().strokeBorder(Palette.done.opacity(0.5), lineWidth: 1))
+                            .transition(.liquid)
+                    } else {
+                        PrimaryButton(title: "Log workout", symbol: "plus.circle.fill") { router.logging = detail.id }
+                    }
                 }
             } else {
                 footer
@@ -278,7 +297,7 @@ struct ChallengeContent<Footer: View>: View {
         error = nil
         do {
             let next: ChallengeDetail = try await api.send("/challenges/\(detail.id)\(path)", body: body)
-            Haptic.success()
+            if key == "agree" { Toaster.shared.confirm("🤝", next.consequence?.status == "agreed" ? "It's agreed" : "You're in on it") } else { Haptic.success() }
             onChange(next)
         } catch {
             withAnimation(Motion.fluid) { self.error = error.localizedDescription }
@@ -330,6 +349,76 @@ private struct YourProgressCard: View {
         .accessibilityLabel("Your progress: \(row.label), \(row.percent) percent.")
         .onAppear { withAnimation(reduce ? nil : Motion.wave.delay(0.25)) { shown = min(1, row.fraction) } }
         .onChange(of: row.fraction) { _, f in withAnimation(reduce ? nil : Motion.wave) { shown = min(1, f) } }
+    }
+}
+
+/** What finishing earns you: the medal, locked until then and struck once it is yours. */
+private struct RewardCard: View {
+    var detail: ChallengeDetail
+    @State private var landed = false
+
+    var body: some View {
+        let earned = MedalView.kind(detail.you.medal)
+        let done = detail.status == "done"
+        if done && earned == nil {
+            EmptyView()
+        } else {
+            Card {
+                HStack(spacing: Metrics.card) {
+                    MedalView(kind: earned ?? .locked, emoji: Catalog.emoji(detail.type), size: 64)
+                        .scaleEffect(landed || earned == nil ? 1 : 0.4)
+                        .rotationEffect(.degrees(landed || earned == nil ? 0 : -30))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(earned == nil ? "Reward" : "Medal unlocked").font(.label).foregroundStyle(Palette.stone)
+                        Text("\(detail.name) medal").font(.heading)
+                        Text(line(earned)).font(.subheadline)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .onAppear { withAnimation(.spring(response: 0.5, dampingFraction: 0.5).delay(0.5)) { landed = true } }
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func line(_ earned: MedalView.Kind?) -> String {
+        switch earned {
+        case .gold: "Gold, for winning it. It's on your Me page."
+        case .goal: "Earned by reaching your goal. It's on your Me page."
+        default: detail.standings.count >= 2 ? "Reach your goal to unlock it. Finish first and it's gold." : "Reach your goal to unlock it."
+        }
+    }
+}
+
+/** On a steps challenge: whether the phone is counting for you, and the way to turn that on. */
+private struct StepsNote: View {
+    @Environment(Router.self) private var router
+    private var steps: StepSync { StepSync.shared }
+
+    var body: some View {
+        if steps.available {
+            HStack(spacing: Metrics.gap) {
+                Text("👟").font(.title2).accessibilityHidden(true)
+                if steps.enabled {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Steps count themselves").font(.label)
+                        Text(steps.today.map { "\(Catalog.fmt(Double($0))) today, from your iPhone." } ?? "Read from your iPhone when you open Rally.")
+                            .font(.footnote).foregroundStyle(Palette.stone)
+                    }
+                    Spacer(minLength: 0)
+                } else {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Let your iPhone count for you").font(.label)
+                        Text("No typing in step counts.").font(.footnote).foregroundStyle(Palette.stone)
+                    }
+                    Spacer(minLength: 0)
+                    SecondaryButton(title: "Turn on", compact: true) { StepSync.shared.enabled = true }
+                }
+            }
+            .padding(.horizontal, Metrics.card)
+            .padding(.vertical, 14)
+            .background(Palette.card, in: .rect(cornerRadius: Metrics.radius))
+        }
     }
 }
 
@@ -432,7 +521,7 @@ private struct ProposeSheet: View {
                         do {
                             let next: ChallengeDetail = try await api.send("/challenges/\(detail.id)/consequence", body: ["text": draft])
                             onChange(next)
-                            Haptic.success()
+                            Toaster.shared.confirm("🎯", "Proposed to your crew")
                             dismiss()
                         } catch {
                             self.error = error.localizedDescription

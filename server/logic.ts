@@ -1,16 +1,16 @@
 import {
-  ACTIVITIES, TIMES, TRACK_TYPES, TYPES, addDays, daysLeftText, diffDays, fairPlay, fmt, isBand, mondayOf,
+  ACTIVITIES, TIMES, TRACK_TYPES, TYPES, addDays, daysLeftText, diffDays, fairPlay, fmt, isBand, longDate, mondayOf,
   periodWord, personalTarget, rangeText, targetOptions, targetShort, targetText, unit,
 } from '../shared/catalog.ts';
 import type { Activity, Band, TrackType } from '../shared/catalog.ts';
 import { CODE_ALPHABET, RENAME_DAYS, cleanLastName, isRenameConsequence, offLimitsReason } from '../shared/copy.ts';
 import type {
   ChallengeCard, ChallengeDetail, CheckinData, CheckinResult, ConsequenceView, FriendData, HomeData,
-  HouseCard, InvitePreview, Me, MeData, PastRow, Person, RenameView, SignupResult,
+  HouseCard, InvitePreview, Me, MeData, Medal, PastRow, Person, RenameView, SignupResult, Workout,
 } from '../shared/api.ts';
 import { HttpError, activeRenames, applyRenames, hashPin, isPin, newId, normalizePhone, nowIso, verifyPin } from './store.ts';
 import { randomInt } from 'node:crypto';
-import type { Challenge, DB, Invite, Member, User } from './store.ts';
+import type { Challenge, DB, Invite, Member, User, WorkoutDetail } from './store.ts';
 
 // ---------- lookups ----------
 
@@ -217,7 +217,7 @@ export function settle(db: DB, today: string, now = Date.now()): boolean {
 }
 
 function streaks(db: DB, userId: string, today: string) {
-  const days = new Set(db.logs.filter((l) => l.userId === userId && l.date <= today).map((l) => l.date));
+  const days = new Set(db.logs.filter((l) => l.userId === userId && l.date <= today && !l.auto).map((l) => l.date));
   let current = 0;
   for (let d = days.has(today) ? today : addDays(today, -1); days.has(d); d = addDays(d, -1)) current++;
   let longest = 0;
@@ -273,7 +273,10 @@ export function friendFor(db: DB, viewer: User, friendId: string): FriendData {
     .filter((m) => m.result === 'won')
     .map((m) => ({ ch: challengeById(db, m.challengeId), size: roster(db, challengeById(db, m.challengeId)).length }))
     .sort((a, b) => b.size - a.size || b.ch.endAt.localeCompare(a.ch.endAt));
-  return { ...person(friend), completed: rows.length, biggestWin: wins[0]?.ch.name ?? null };
+  return {
+    ...person(friend), completed: rows.length, biggestWin: wins[0]?.ch.name ?? null,
+    recent: workoutsOf(db, friendId).filter((w) => w.shared).slice(0, 5),
+  };
 }
 
 export function meFor(db: DB, user: User, today: string): MeData {
@@ -294,7 +297,7 @@ export function meFor(db: DB, user: User, today: string): MeData {
       const i = diffDays(group[0].date, monday);
       if (type === 'steps' || type === 'miles') {
         days[i] += Math.max(0, ...group.filter((l) => l.type === type).map((l) => l.amount));
-      } else if (ACTIVITIES.find((a) => a.key === group[0].activity)?.tracks === type) {
+      } else if (!group[0].auto && ACTIVITIES.find((a) => a.key === group[0].activity)?.tracks === type) {
         days[i] += 1;
       }
     }
@@ -314,7 +317,7 @@ export function meFor(db: DB, user: User, today: string): MeData {
     const ch = challengeById(db, m.challengeId);
     const w = windowOf(ch, m);
     const result = m.result === 'won' ? 'Won' : m.result === 'finished' ? 'Finished' : 'Dropped';
-    past.push({ id: ch.id, name: ch.name, rangeText: rangeText(w.start, w.end), result, end: w.end });
+    past.push({ id: ch.id, name: ch.name, type: ch.type, rangeText: rangeText(w.start, w.end), result, medal: medalFor(db, ch, m, today), end: w.end });
   }
   past.sort((a, b) => b.end.localeCompare(a.end));
 
@@ -329,9 +332,114 @@ export function meFor(db: DB, user: User, today: string): MeData {
   };
 }
 
+/** Gold for winning. A goal medal for reaching your own goal by the end. Nothing while it is still running. */
+function medalFor(db: DB, ch: Challenge, m: Member, today: string): Medal | null {
+  if (!m.result || m.result === 'dropped') return null;
+  if (m.result === 'won') return 'gold';
+  return progressOf(db, ch, m, today).complete ? 'goal' : null;
+}
+
+// ---------- workout details and the workout log ----------
+
+const whole = (v: unknown, max: number): number | null => {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) && n > 0 && n <= max ? n : null;
+};
+
+/** What someone typed about a workout, tidied. Null when there is nothing worth keeping. */
+function cleanDetail(raw: any): Omit<WorkoutDetail, 'id' | 'userId'> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const exercises = (Array.isArray(raw.exercises) ? raw.exercises : [])
+    .slice(0, 20)
+    .map((e: any) => {
+      const weight = Math.round(Number(e?.weight) * 10) / 10;
+      return {
+        name: cleanText(e?.name, 40),
+        sets: whole(e?.sets, 99),
+        reps: whole(e?.reps, 999),
+        weight: Number.isFinite(weight) && weight > 0 && weight <= 2000 ? weight : null,
+      };
+    })
+    .filter((e: { name: string }) => e.name);
+  const detail = { minutes: whole(raw.minutes, 1440), note: cleanText(raw.note, 280), exercises, shared: raw.shared === true };
+  return detail.minutes || detail.note || exercises.length || detail.shared ? detail : null;
+}
+
+/** Everything one person has logged, newest first: each check-in once, with its detail if it has any. */
+function workoutsOf(db: DB, userId: string): Workout[] {
+  const groups = new Map<string, typeof db.logs>();
+  for (const l of db.logs) {
+    if (l.userId !== userId || l.auto) continue;
+    groups.set(l.checkinId, [...(groups.get(l.checkinId) ?? []), l]);
+  }
+  return [...groups.entries()]
+    .map(([id, logs]) => {
+      const d = db.workouts.find((w) => w.id === id && w.userId === userId);
+      const first = logs[0];
+      return {
+        id,
+        date: first.date,
+        dateText: longDate(first.date),
+        activity: first.activity,
+        activityLabel: ACTIVITIES.find((a) => a.key === first.activity)?.label ?? 'Workout',
+        minutes: d?.minutes ?? null,
+        note: d?.note ?? '',
+        exercises: d?.exercises ?? [],
+        shared: d?.shared ?? false,
+        countedToward: logs
+          .map((l) => db.challenges.find((c) => c.id === l.challengeId)?.name)
+          .filter((n): n is string => !!n),
+        at: first.createdAt,
+      };
+    })
+    .sort((a, b) => b.date.localeCompare(a.date) || b.at.localeCompare(a.at))
+    .map(({ at, ...w }) => w);
+}
+
+export const workoutLog = (db: DB, user: User): Workout[] => workoutsOf(db, user.id).slice(0, 200);
+
+/** Add or change the detail on one of your own workouts, any day. */
+export function updateWorkout(db: DB, user: User, id: string, body: any): Workout {
+  if (!db.logs.some((l) => l.checkinId === id && l.userId === user.id && !l.auto)) throw new HttpError(404, 'Workout not found.');
+  const detail = cleanDetail(body) ?? { minutes: null, note: '', exercises: [], shared: false };
+  db.workouts = db.workouts.filter((w) => !(w.id === id && w.userId === user.id));
+  db.workouts.push({ id, userId: user.id, ...detail });
+  return workoutsOf(db, user.id).find((w) => w.id === id)!;
+}
+
+// ---------- steps from the phone ----------
+
+/**
+ * The phone reports today's step count; it becomes today's number in every steps challenge this person
+ * is in. One synced log per challenge per day, rewritten as the count climbs. Steps someone typed in by
+ * hand that day are kept, and the synced log only covers the difference, so nothing is counted twice.
+ * These logs do not count as a check-in: walking around is not the same as saying you worked out.
+ */
+export function syncSteps(db: DB, user: User, today: string, body: any): { challenges: number; steps: number } {
+  const steps = Math.round(Number(body?.steps));
+  if (!(steps >= 0 && steps <= 200000)) throw new HttpError(400, 'That step count does not look right.');
+  let challenges = 0;
+  for (const { ch } of activeFor(db, user, today)) {
+    if (ch.type !== 'steps') continue;
+    const mine = (l: DB['logs'][number]) => l.challengeId === ch.id && l.userId === user.id && l.date === today;
+    const typed = db.logs.filter((l) => mine(l) && !l.auto).reduce((sum, l) => sum + l.amount, 0);
+    const amount = Math.max(0, steps - typed);
+    const existing = db.logs.find((l) => mine(l) && l.auto);
+    if (existing) existing.amount = amount;
+    else if (amount > 0) {
+      db.logs.push({
+        id: newId(), checkinId: `steps:${today}:${user.id}`, userId: user.id, challengeId: ch.id, date: today,
+        activity: 'walk', type: 'steps', amount, createdAt: nowIso(), auto: true,
+      });
+    }
+    challenges++;
+  }
+  return { challenges, steps };
+}
+
 export function checkinFor(db: DB, user: User, today: string): CheckinData {
   return {
-    checkedIn: db.logs.some((l) => l.userId === user.id && l.date === today),
+    checkedIn: db.logs.some((l) => l.userId === user.id && l.date === today && !l.auto),
     streak: streaks(db, user.id, today).current,
     challenges: activeFor(db, user, today).map(({ ch, m }) => {
       const p = progressOf(db, ch, m, today);
@@ -370,6 +478,8 @@ export function logCheckin(db: DB, user: User, today: string, body: any): Checki
     if (entries.length) throw new HttpError(409, 'Already logged today.');
     db.logs.push({ id: newId(), checkinId, userId: user.id, challengeId: null, date: today, activity, type: null, amount: 1, createdAt });
   }
+  const detail = cleanDetail(body?.details);
+  if (detail) db.workouts.push({ id: checkinId, userId: user.id, ...detail });
   const cards = touched.map(({ ch, m }) => cardFor(db, ch, m, today));
   const streak = streaks(db, user.id, today).current;
   const line = cards.length
@@ -389,6 +499,7 @@ export function undoCheckin(db: DB, user: User, today: string, body: any): { rem
   db.logs = db.logs.filter((l) => !(l.checkinId === id && l.userId === user.id && l.date === today));
   const removed = before - db.logs.length;
   if (!removed) throw new HttpError(404, 'That log is already gone.');
+  db.workouts = db.workouts.filter((w) => !(w.id === id && w.userId === user.id));
   return { removed };
 }
 
@@ -518,7 +629,11 @@ export function detailFor(db: DB, ch: Challenge, viewer: User | null, today: str
     standings,
     members: rows.map((r) => person(r.u)),
     alerts,
-    you: { member: active, commissioner, readOnly: !active, result: mine?.result ?? null },
+    you: {
+      member: active, commissioner, readOnly: !active, result: mine?.result ?? null,
+      loggedToday: !!mine && active && !TYPES[ch.type].numeric && progressOf(db, ch, mine, today).loggedToday,
+      medal: mine ? medalFor(db, ch, mine, today) : null,
+    },
     manage: commissioner
       ? rows
         .filter((r) => r.u.id !== viewer?.id)
@@ -836,6 +951,8 @@ export function deleteChallenge(db: DB, ch: Challenge, user: User): void {
   db.invites = db.invites.filter((x) => !gone(x));
   db.removals = db.removals.filter((x) => !gone(x));
   db.renames = db.renames.filter((x) => !gone(x));
+  // A person's own logs stay as plain workouts; step counts written by syncing only existed for the challenge.
+  db.logs = db.logs.filter((l) => !(gone(l) && l.auto));
   for (const log of db.logs) if (gone(log)) log.challengeId = null;
 }
 

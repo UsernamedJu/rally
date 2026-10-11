@@ -59,6 +59,17 @@ export type Log = {
   type: ChallengeType | null;
   amount: number;
   createdAt: string;
+  /** Written by step syncing, not by a person. It counts toward the challenge but is not a check-in. */
+  auto?: boolean;
+};
+/** The optional detail on a check-in: how long, what exactly, and whether the crew can see it. */
+export type WorkoutDetail = {
+  id: string; // the check-in id
+  userId: string;
+  minutes: number | null;
+  note: string;
+  exercises: { name: string; sets: number | null; reps: number | null; weight: number | null }[];
+  shared: boolean;
 };
 export type Consequence = {
   challengeId: string;
@@ -98,6 +109,7 @@ export type DB = {
   invites: Invite[];
   removals: Removal[];
   renames: Rename[];
+  workouts: WorkoutDetail[];
 };
 
 export class HttpError extends Error {
@@ -150,7 +162,7 @@ const HOUSE: Pick<Challenge, 'id' | 'name' | 'type' | 'target' | 'per' | 'length
 // The file is small enough to read on every request, which also lets the seed script
 // edit it while the server is running.
 export function load(): DB {
-  const db: DB = { users: [], crew: [], challenges: [], members: [], logs: [], consequences: [], invites: [], removals: [], renames: [] };
+  const db: DB = { users: [], crew: [], challenges: [], members: [], logs: [], consequences: [], invites: [], removals: [], renames: [], workouts: [] };
   if (existsSync(DATA_FILE)) Object.assign(db, JSON.parse(readFileSync(DATA_FILE, 'utf8')));
   for (const u of db.users) {
     if (!isBand(u.band)) u.band = 'active';

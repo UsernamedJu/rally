@@ -79,6 +79,39 @@ struct FriendData: Codable {
     var avatar: Int
     var completed: Int
     var biggestWin: String?
+    /** Workouts they chose to share, newest first. Missing from older servers. */
+    var recent: [Workout]?
+}
+
+struct Exercise: Codable, Hashable {
+    var name: String
+    var sets: Int?
+    var reps: Int?
+    var weight: Double?
+
+    /** "3 x 8 at 135 lb", with whatever parts were filled in. */
+    var summary: String {
+        var parts: [String] = []
+        if let sets, let reps { parts.append("\(sets) x \(reps)") } else if let sets { parts.append("\(sets) sets") } else if let reps { parts.append("\(reps) reps") }
+        if let weight { parts.append("\(Catalog.fmt(weight)) lb") }
+        return parts.joined(separator: " at ")
+    }
+}
+
+/** One logged workout, with whatever detail its owner added. */
+struct Workout: Codable, Hashable, Identifiable {
+    var id: String
+    var date: String
+    var dateText: String
+    var activity: String
+    var activityLabel: String
+    var minutes: Int?
+    var note: String
+    var exercises: [Exercise]
+    var shared: Bool
+    var countedToward: [String]
+
+    var hasDetail: Bool { minutes != nil || !note.isEmpty || !exercises.isEmpty }
 }
 
 struct Standing: Codable, Hashable, Identifiable {
@@ -133,6 +166,10 @@ struct YouInChallenge: Codable, Hashable {
     var commissioner: Bool
     var readOnly: Bool
     var result: String?
+    /** A session challenge takes one log a day; this is whether today's is in. */
+    var loggedToday: Bool?
+    /** "gold" or "goal", once the challenge is over and you earned one. */
+    var medal: String?
 }
 
 struct ManagedPerson: Codable, Hashable, Identifiable {
@@ -207,6 +244,8 @@ struct TrackedCard: Codable, Hashable, Identifiable {
 struct PastRow: Codable, Hashable {
     var id: String
     var name: String
+    var type: String?
+    var medal: String?
     var rangeText: String
     var result: String
 }
