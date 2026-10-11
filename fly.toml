@@ -7,7 +7,7 @@ primary_region = "lax"
   APPLE_TEAM_ID = "B7H47WD4BU"
   BUNDLE_ID = "com.jean.fitnesschallenge"
   # The newest build approved in TestFlight. Raise it after each release so older copies offer the update.
-  LATEST_BUILD = "4"
+  LATEST_BUILD = "5"
 
 [mounts]
   source = "rally_data"
