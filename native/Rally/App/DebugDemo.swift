@@ -53,18 +53,19 @@ struct DebugDemo: View {
           "status": "done", "daysLeftText": "Ended", "timeFraction": 1, "rangeText": "Sept 25 to Oct 8",
           "consequence": {"status": "agreed", "text": "Buys coffee", "proposedBy": "Dana", "youProposed": false, "youAgreed": true, "waitingOn": 0},
           "rename": null,
+          "stakes": {"reward": {"emoji": "👟", "title": "Golden shoes", "days": 7}, "forfeit": {"emoji": "🐌", "title": "Snail", "days": 7}, "solo": false},
           "hero": {"rank": "1st", "progress": "6 of 6", "people": "4"},
           "fair": false, "yourGoalText": null, "winnerName": "Jean",
-          "resultText": "You won. Sam finished last and buys coffee.",
+          "resultText": "You won and wear the Golden shoes for 7 days. Sam finished last, wears the Snail and buys coffee.",
           "standings": [
-            {"id": "u1", "name": "Jean", "avatar": 1, "rank": 1, "fraction": 1, "percent": 100, "label": "6 of 6", "goalText": null, "delta": "+1", "isYou": true, "onTheHook": false, "complete": true},
+            {"id": "u1", "name": "Jean", "avatar": 1, "rank": 1, "fraction": 1, "percent": 100, "label": "6 of 6", "goalText": null, "delta": "+1", "isYou": true, "onTheHook": false, "complete": true, "flair": {"emoji": "👟", "kind": "reward"}},
             {"id": "u2", "name": "Dana", "avatar": 2, "rank": 2, "fraction": 0.83, "percent": 83, "label": "5 of 6", "goalText": null, "delta": "-1", "isYou": false, "onTheHook": false, "complete": false},
             {"id": "u3", "name": "Priya", "avatar": 4, "rank": 3, "fraction": 0.67, "percent": 67, "label": "4 of 6", "goalText": null, "delta": null, "isYou": false, "onTheHook": false, "complete": false},
-            {"id": "u4", "name": "Sam", "avatar": 5, "rank": 4, "fraction": 0.33, "percent": 33, "label": "2 of 6", "goalText": null, "delta": null, "isYou": false, "onTheHook": true, "complete": false}
+            {"id": "u4", "name": "Sam", "avatar": 5, "rank": 4, "fraction": 0.33, "percent": 33, "label": "2 of 6", "goalText": null, "delta": null, "isYou": false, "onTheHook": true, "complete": false, "flair": {"emoji": "🐌", "kind": "forfeit"}}
           ],
           "members": [
-            {"id": "u1", "name": "Jean", "avatar": 1}, {"id": "u2", "name": "Dana", "avatar": 2},
-            {"id": "u3", "name": "Priya", "avatar": 4}, {"id": "u4", "name": "Sam", "avatar": 5}
+            {"id": "u1", "name": "Jean", "avatar": 1, "flair": {"emoji": "👟", "kind": "reward"}}, {"id": "u2", "name": "Dana", "avatar": 2},
+            {"id": "u3", "name": "Priya", "avatar": 4}, {"id": "u4", "name": "Sam", "avatar": 5, "flair": {"emoji": "🐌", "kind": "forfeit"}}
           ],
           "alerts": [],
           "you": {"member": true, "commissioner": false, "readOnly": true, "result": "won", "loggedToday": false, "medal": "gold"},
