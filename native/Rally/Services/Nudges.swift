@@ -23,7 +23,8 @@ enum Nudges {
     static func afterHomeLoads(_ home: HomeData, router: Router) async {
         // Not on every pull to refresh: once per stretch of using the app.
         guard Date.now.timeIntervalSince(lastHomeNudge) > 20 * 60, Toaster.shared.current == nil else { return }
-        guard let toast = await pick(home, router: router) else { return }
+        await Achievements.check()
+        guard Toaster.shared.current == nil, let toast = await pick(home, router: router) else { return }
         lastHomeNudge = .now
         // Let the screen settle before anything drops in over it.
         try? await Task.sleep(for: .seconds(1.6))
@@ -93,6 +94,33 @@ enum Nudges {
     }
 }
 
+// ---------- achievements ----------
+
+enum Achievements {
+    private static let key = "achievementsSeen"
+
+    /** A banner for each medal earned since the last look. The first look only takes note, so nobody gets a flood. */
+    static func announceNew(_ list: [Achievement]) {
+        let earned = Set(list.filter(\.earned).map(\.id))
+        guard let stored = UserDefaults.standard.array(forKey: key) as? [String] else {
+            UserDefaults.standard.set(Array(earned), forKey: key)
+            return
+        }
+        let fresh = list.filter { $0.earned && !stored.contains($0.id) }
+        guard !fresh.isEmpty else { return }
+        UserDefaults.standard.set(Array(earned.union(stored)), forKey: key)
+        for a in fresh.prefix(3) {
+            Toaster.shared.show(Toast(emoji: a.emoji, title: "Medal unlocked: \(a.title)", detail: a.text, seconds: 5))
+        }
+    }
+
+    /** Checks quietly, for right after something that could have earned one. */
+    static func check() async {
+        guard let me: MeData = try? await API.shared.send("/me/summary"), let list = me.achievements else { return }
+        announceNew(list)
+    }
+}
+
 // ---------- what's new ----------
 
 /** What changed in the build someone just updated to. Edit `notes` with each release. */
@@ -105,12 +133,12 @@ enum WhatsNew {
     }
 
     /** The build these notes describe. Anyone coming from an older build sees them once. */
-    static let build = 5
+    static let build = 6
     static let notes = [
-        Note(emoji: "🏅", title: "Medals", text: "Reach your goal in a challenge and you unlock its medal. Win it and it's gold. They live on your Me page."),
-        Note(emoji: "📒", title: "Workout details", text: "Add how long, your exercises and weights, and a note when you log. Keep it private or share it with your crew."),
-        Note(emoji: "👟", title: "Steps count themselves", text: "Turn it on in Settings and your iPhone's step count goes into your steps challenges for you."),
-        Note(emoji: "💡", title: "A little more life", text: "Fun facts after you check in, and a heads-up when a friend logs or a challenge is about to end."),
+        Note(emoji: "⚔️", title: "Something at stake", text: "Every challenge now has a badge to win and one to avoid. They match the challenge, and they show on your avatar for the whole crew to see."),
+        Note(emoji: "👑", title: "Winners wear it", text: "Win and you get the good badge with a gold ring for a week. Come last and you're stuck with the other one."),
+        Note(emoji: "🏅", title: "Achievements", text: "17 medals to collect for streaks, wins, workouts and more. Find them on your Me page and tap one to see what it takes."),
+        Note(emoji: "🧹", title: "A tidier challenge page", text: "Your progress, the standings and the stakes each have their own space now."),
     ]
 
     private static let key = "whatsNewSeen"

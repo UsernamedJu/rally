@@ -310,6 +310,26 @@ struct AvatarView: View {
                     .font(.system(size: size * 0.42, weight: .semibold, design: .rounded))
                     .foregroundStyle(AvatarTone.text(person.avatar))
             }
+            // Winners get a gold ring for as long as they hold the reward.
+            .overlay {
+                if person.flair?.kind == "reward" {
+                    Circle().strokeBorder(
+                        LinearGradient(colors: [Color(red: 1, green: 0.87, blue: 0.42), Color(red: 0.86, green: 0.60, blue: 0.13)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        lineWidth: max(2, size * 0.06))
+                }
+            }
+            // The badge itself, worn on the shoulder. Too small to read on the tiniest avatars.
+            .overlay(alignment: .topTrailing) {
+                if let flair = person.flair, size >= 34 {
+                    Text(flair.emoji)
+                        .font(.system(size: size * 0.4))
+                        .frame(width: size * 0.52, height: size * 0.52)
+                        .background(Palette.raised, in: .circle)
+                        .overlay(Circle().strokeBorder(Palette.line, lineWidth: 0.5))
+                        .offset(x: size * 0.16, y: -size * 0.14)
+                        .accessibilityLabel(flair.kind == "reward" ? "Wearing a winner's badge" : "Wearing a forfeit badge")
+                }
+            }
             .overlay(alignment: .bottomTrailing) {
                 if dot {
                     Circle()
@@ -635,6 +655,8 @@ struct Page<Content: View, Footer: View>: View {
                 .padding(.top, 8)
                 .padding(.bottom, Metrics.screen)
         }
+        // Debug only: -RallyPageBottom YES opens every page scrolled to its end, -RallyPageMid YES halfway.
+        .defaultScrollAnchor(DebugDemo.flag("RallyPageBottom") ? .bottom : DebugDemo.flag("RallyPageMid") ? .center : .top)
         .scrollDismissesKeyboard(.interactively)
         .background { if backdrop { WaterBackdrop() } else { Palette.page.ignoresSafeArea() } }
         // A safe area bar gives the iOS 26 scroll edge effect: content softens as it passes under the buttons.

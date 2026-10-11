@@ -3,10 +3,51 @@ import Foundation
 // The JSON shapes the API returns (shared/api.ts on the server side). Screens render these directly;
 // the server does the math.
 
+/** A badge someone is wearing because of how a challenge ended: "reward" for winning, "forfeit" for coming last. */
+struct Flair: Codable, Hashable {
+    var emoji: String
+    var kind: String
+}
+
+struct FlairDetail: Codable, Hashable {
+    var emoji: String
+    var kind: String
+    var title: String
+    var challengeName: String
+    var until: String
+}
+
+struct Badge: Codable, Hashable {
+    var emoji: String
+    var title: String
+    var days: Int
+}
+
+/** What a challenge puts on the line inside the app. */
+struct Stakes: Codable, Hashable {
+    var reward: Badge
+    var forfeit: Badge
+    /** No opponents: it comes down to whether you reach the goal. */
+    var solo: Bool
+}
+
+/** A medal for something done across challenges, earned or still to earn. */
+struct Achievement: Codable, Hashable, Identifiable {
+    var id: String
+    var emoji: String
+    var title: String
+    var text: String
+    var earned: Bool
+    var gold: Bool
+    var progress: Double
+    var progressText: String
+}
+
 struct Person: Codable, Hashable, Identifiable {
     var id: String
     var name: String
     var avatar: Int
+    var flair: Flair? = nil
 }
 
 struct NameChange: Codable, Hashable {
@@ -21,6 +62,7 @@ struct Me: Codable, Hashable {
     var name: String
     var avatar: Int
     var nameChange: NameChange?
+    var flairDetail: FlairDetail?
     var workoutTime: String
     var trackedTypes: [String]
     var notifications: Bool
@@ -28,7 +70,8 @@ struct Me: Codable, Hashable {
     var phone: String?
     var hasPin: Bool
 
-    var person: Person { Person(id: id, name: name, avatar: avatar) }
+    var flair: Flair? = nil
+    var person: Person { Person(id: id, name: name, avatar: avatar, flair: flair) }
 }
 
 struct SignupResult: Codable {
@@ -64,7 +107,8 @@ struct CrewMember: Codable, Hashable, Identifiable {
     var avatar: Int
     var loggedToday: Bool
 
-    var person: Person { Person(id: id, name: name, avatar: avatar) }
+    var flair: Flair? = nil
+    var person: Person { Person(id: id, name: name, avatar: avatar, flair: flair) }
 }
 
 struct HomeData: Codable {
@@ -128,7 +172,8 @@ struct Standing: Codable, Hashable, Identifiable {
     var onTheHook: Bool
     var complete: Bool
 
-    var person: Person { Person(id: id, name: name, avatar: avatar) }
+    var flair: Flair? = nil
+    var person: Person { Person(id: id, name: name, avatar: avatar, flair: flair) }
 }
 
 struct HeroStats: Codable, Hashable {
@@ -178,7 +223,8 @@ struct ManagedPerson: Codable, Hashable, Identifiable {
     var avatar: Int
     var pending: Bool
 
-    var person: Person { Person(id: id, name: name, avatar: avatar) }
+    var flair: Flair? = nil
+    var person: Person { Person(id: id, name: name, avatar: avatar, flair: flair) }
 }
 
 struct ChallengeDetail: Codable, Hashable, Identifiable {
@@ -196,6 +242,7 @@ struct ChallengeDetail: Codable, Hashable, Identifiable {
     var timeFraction: Double
     var rangeText: String
     var consequence: ConsequenceView?
+    var stakes: Stakes?
     var rename: RenameView?
     var hero: HeroStats
     var fair: Bool
@@ -252,6 +299,7 @@ struct PastRow: Codable, Hashable {
 
 struct MeData: Codable {
     var user: Me
+    var achievements: [Achievement]?
     var streak: Int
     var longestStreak: Int
     var completed: Int
@@ -267,6 +315,7 @@ struct HouseCard: Codable, Hashable, Identifiable {
     var targetText: String
     var memberCount: Int
     var joined: Bool
+    var stakes: Stakes?
 
     var kind: String { type ?? Catalog.guessType(from: targetText) }
 }

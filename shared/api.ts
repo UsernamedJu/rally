@@ -1,7 +1,32 @@
 // The JSON shapes the API returns. Screens render these directly; the server does the math.
 import type { Activity, Band, ChallengeType, Per, Result, TrackType } from './catalog.ts';
 
-export type Person = { id: string; name: string; avatar: number };
+/** A badge someone is wearing because of how a challenge ended: a reward for winning it, a forfeit for coming last. */
+export type Flair = { emoji: string; kind: 'reward' | 'forfeit' };
+
+export type Person = { id: string; name: string; avatar: number; flair?: Flair | null };
+
+/** Your own badge, with where it came from and when it comes off. */
+export type FlairDetail = Flair & { title: string; challengeName: string; until: string };
+
+/** What a challenge puts on the line inside the app. */
+export type Stakes = {
+  reward: { emoji: string; title: string; days: number };
+  forfeit: { emoji: string; title: string; days: number };
+  /** No opponents: it comes down to whether you reach the goal. */
+  solo: boolean;
+};
+
+/** A medal for something done across challenges, earned or still to earn. */
+export type Achievement = {
+  id: string; emoji: string; title: string; text: string;
+  earned: boolean;
+  /** The rare ones are struck in gold. */
+  gold: boolean;
+  /** 0 to 1 toward earning it. */
+  progress: number;
+  progressText: string;
+};
 
 /** A last name a challenge winner gave someone, while it lasts. */
 export type NameChange = { lastName: string; by: string; challengeName: string; until: string };
@@ -9,6 +34,8 @@ export type NameChange = { lastName: string; by: string; challengeName: string; 
 export type Me = Person & {
   /** Set while a winner's chosen last name is in effect. `name` is then the changed one. */
   nameChange: NameChange | null;
+  /** The badge you are wearing right now, if any. */
+  flairDetail: FlairDetail | null;
   workoutTime: string;
   trackedTypes: TrackType[];
   notifications: boolean;
@@ -127,6 +154,7 @@ export type ChallengeDetail = {
   timeFraction: number;
   rangeText: string;
   consequence: ConsequenceView | null;
+  stakes: Stakes;
   rename: RenameView | null;
   hero: HeroStats;
   /** Ranked on percent of each person's own goal. */
@@ -173,6 +201,7 @@ export type PastRow = { id: string; name: string; type: ChallengeType; rangeText
 
 export type MeData = {
   user: Me;
+  achievements: Achievement[];
   streak: number;
   longestStreak: number;
   completed: number;
@@ -181,7 +210,7 @@ export type MeData = {
   past: PastRow[];
 };
 
-export type HouseCard = { id: string; name: string; type: ChallengeType; targetText: string; memberCount: number; joined: boolean };
+export type HouseCard = { id: string; name: string; type: ChallengeType; targetText: string; memberCount: number; joined: boolean; stakes: Stakes };
 
 export type InvitePreview = {
   token: string;

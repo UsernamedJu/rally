@@ -16,6 +16,10 @@ struct MeView: View {
                 }
                 .settles(0)
 
+                if let flair = data.user.flairDetail {
+                    WearingCard(flair: flair).settles(1)
+                }
+
                 if let change = data.user.nameChange {
                     Button { router.me.append(.settings) } label: {
                         Card(tint: true) {
@@ -49,6 +53,10 @@ struct MeView: View {
                     }
                 }
                 .settles(2)
+
+                if let achievements = data.achievements {
+                    AchievementGrid(achievements: achievements)
+                }
 
                 VStack(alignment: .leading, spacing: Metrics.gap) {
                     Text("What you track").font(.heading)
@@ -151,6 +159,8 @@ struct MeView: View {
             }
         }
         .loads(remote)
+        .onChange(of: remote.data?.achievements) { _, list in if let list { Achievements.announceNew(list) } }
+        .onAppear { if let list = remote.data?.achievements { Achievements.announceNew(list) } }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Settings", systemImage: "gearshape.fill") { router.me.append(.settings) }
@@ -162,6 +172,70 @@ struct MeView: View {
         Stat(emoji: "✅", value: d.completed, label: "Challenges completed", stacked: stacked)
         Stat(emoji: "🏆", value: d.won, label: "Challenges won", stacked: stacked)
         Stat(emoji: "📈", value: d.longestStreak, label: "Longest streak", stacked: stacked)
+    }
+}
+
+/** The badge you are wearing right now, why, and when it comes off. */
+private struct WearingCard: View {
+    var flair: FlairDetail
+    private var reward: Bool { flair.kind == "reward" }
+
+    var body: some View {
+        HStack(spacing: Metrics.card) {
+            Text(flair.emoji).font(.system(size: 44)).bobbing().accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(reward ? "You earned it" : "You're wearing it").font(.label).foregroundStyle(Palette.stone)
+                Text(flair.title).font(.heading)
+                Text(reward
+                     ? "For winning \(flair.challengeName). Everyone sees it on your avatar until \(Copy.shortDate(flair.until))."
+                     : "For coming up short in \(flair.challengeName). It's on your avatar until \(Copy.shortDate(flair.until)).")
+                    .font(.subheadline)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(Metrics.card)
+        .background(reward ? AnyShapeStyle(LinearGradient(colors: [Color(red: 1, green: 0.87, blue: 0.42).opacity(0.28), Palette.card], startPoint: .topLeading, endPoint: .bottomTrailing)) : AnyShapeStyle(Palette.signalTint),
+                    in: .rect(cornerRadius: Metrics.radius))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/** Every achievement medal: the ones you have, struck and bright, and the ones still to earn with how far along you are. */
+private struct AchievementGrid: View {
+    var achievements: [Achievement]
+    private var ordered: [Achievement] { achievements.filter(\.earned) + achievements.filter { !$0.earned }.sorted { $0.progress > $1.progress } }
+
+    var body: some View {
+        let earned = achievements.filter(\.earned).count
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Achievements").font(.heading)
+                Spacer()
+                Text("\(earned) of \(achievements.count)").font(.label).foregroundStyle(Palette.stone)
+            }
+            .settles(2)
+            // The row itself stays out of the settle effect: a scroll view inside that layer draws nothing.
+            // One row to swipe through. Tap a medal for what it takes and how far along you are.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 6) {
+                    ForEach(ordered) { a in
+                        Button {
+                            Toaster.shared.show(Toast(emoji: a.emoji, title: a.title, detail: a.earned ? "\(a.text) Earned." : "\(a.text) \(a.progressText).", seconds: 4))
+                        } label: {
+                            VStack(spacing: 4) {
+                                MedalView(kind: a.earned ? (a.gold ? .gold : .goal) : .locked, emoji: a.emoji, size: 40)
+                                Text(a.title).font(.caption2.weight(.medium)).foregroundStyle(a.earned ? Palette.ink : Palette.stone)
+                                    .lineLimit(1)
+                            }
+                            .frame(width: 68)
+                        }
+                        .buttonStyle(WaterButtonStyle())
+                        .accessibilityLabel("\(a.title). \(a.earned ? "Earned" : a.progressText). \(a.text)")
+                    }
+                }
+            }
+            .scrollClipDisabled()
+        }
     }
 }
 

@@ -1,10 +1,11 @@
 import {
-  ACTIVITIES, TIMES, TRACK_TYPES, TYPES, addDays, daysLeftText, diffDays, fairPlay, fmt, isBand, longDate, mondayOf,
+  ACTIVITIES, REWARD_DAYS, STAKES, TIMES, TRACK_TYPES, TYPES, addDays, daysLeftText, diffDays, fairPlay, fmt, forfeitDays, isBand, longDate, mondayOf,
   periodWord, personalTarget, rangeText, targetOptions, targetShort, targetText, unit,
 } from '../shared/catalog.ts';
 import type { Activity, Band, TrackType } from '../shared/catalog.ts';
 import { CODE_ALPHABET, RENAME_DAYS, cleanLastName, isRenameConsequence, offLimitsReason } from '../shared/copy.ts';
 import type {
+  Achievement, Stakes,
   ChallengeCard, ChallengeDetail, CheckinData, CheckinResult, ConsequenceView, FriendData, HomeData,
   HouseCard, InvitePreview, Me, MeData, Medal, PastRow, Person, RenameView, SignupResult, Workout,
 } from '../shared/api.ts';
@@ -14,11 +15,46 @@ import type { Challenge, DB, Invite, Member, User, WorkoutDetail } from './store
 
 // ---------- lookups ----------
 
-export const person = (u: User): Person => ({ id: u.id, name: u.name, avatar: u.avatar });
+export const person = (u: User): Person => ({
+  id: u.id, name: u.name, avatar: u.avatar,
+  flair: u.flair ? { emoji: u.flair.emoji, kind: u.flair.kind } : null,
+});
+
+/** What a challenge puts on the line, themed to its type. */
+export function stakesFor(ch: Pick<Challenge, 'type' | 'houseChallenge'>): Stakes {
+  const s = STAKES[ch.type];
+  return {
+    reward: { ...s.reward, days: REWARD_DAYS },
+    forfeit: { ...s.forfeit, days: forfeitDays(ch.houseChallenge) },
+    solo: ch.houseChallenge,
+  };
+}
+
+/**
+ * Puts today's badge on everyone who is wearing one, in memory only, so every view that shows a person
+ * shows it without knowing where it came from. If someone holds more than one, the newest wins.
+ */
+export function applyFlairs(db: DB, today: string): void {
+  for (const u of db.users) delete u.flair;
+  const active = db.flairs.filter((f) => f.from <= today && today < f.until).sort((a, b) => a.from.localeCompare(b.from));
+  for (const f of active) {
+    const u = db.users.find((x) => x.id === f.userId);
+    const ch = db.challenges.find((c) => c.id === f.challengeId);
+    if (!u || !ch) continue;
+    const badge = STAKES[ch.type][f.kind];
+    u.flair = { emoji: badge.emoji, title: badge.title, kind: f.kind, challengeName: ch.name, until: f.until };
+  }
+}
+
+function award(db: DB, ch: Challenge, userId: string, kind: 'reward' | 'forfeit', today: string): void {
+  const days = kind === 'reward' ? REWARD_DAYS : forfeitDays(ch.houseChallenge);
+  db.flairs.push({ userId, challengeId: ch.id, kind, from: today, until: addDays(today, days) });
+}
 
 export const meView = (u: User): Me => ({
   ...person(u), workoutTime: u.workoutTime, trackedTypes: u.trackedTypes, notifications: u.notifications,
   band: u.band, phone: u.phone, hasPin: !!u.pinHash, nameChange: u.nameChange ?? null,
+  flairDetail: u.flair ?? null,
 });
 
 const userById = (db: DB, id: string | null) => db.users.find((u) => u.id === id);
@@ -180,6 +216,16 @@ function finish(db: DB, ch: Challenge, today: string): void {
     }
   }
   for (const r of rows) r.m.result = winners.has(r.m.userId) ? 'won' : 'finished';
+
+  // The stakes: only when there was a real contest with a winner. The winners wear the reward, and
+  // whoever came last without reaching the goal wears the forfeit.
+  if (winners.size) {
+    const lowest = Math.min(...rows.map((r) => share(r.p)));
+    for (const r of rows) {
+      if (winners.has(r.m.userId)) award(db, ch, r.m.userId, 'reward', today);
+      else if (share(r.p) === lowest && !r.p.complete) award(db, ch, r.m.userId, 'forfeit', today);
+    }
+  }
 }
 
 /** Applies anything that became due since the last request: removals and finished challenges. */
@@ -205,6 +251,8 @@ export function settle(db: DB, today: string, now = Date.now()): boolean {
       for (const m of db.members) {
         if (m.challengeId === ch.id && !m.result && !m.removedAt && today >= windowOf(ch, m).end) {
           m.result = 'finished';
+          // An open challenge has no opponents: the stakes ride on whether you reached the goal.
+          award(db, ch, m.userId, progressOf(db, ch, m, today).complete ? 'reward' : 'forfeit', today);
           changed = true;
         }
       }
@@ -279,6 +327,54 @@ export function friendFor(db: DB, viewer: User, friendId: string): FriendData {
   };
 }
 
+/** The medals for things done across challenges. Each is worked out from what is already recorded. */
+function achievementsFor(db: DB, user: User, today: string, longestStreak: number): Achievement[] {
+  const mine = db.logs.filter((l) => l.userId === user.id);
+  const typed = mine.filter((l) => !l.auto);
+  const workouts = new Set(typed.map((l) => l.checkinId)).size;
+  const activities = new Set(typed.map((l) => l.activity)).size;
+  const rows = db.members.filter((m) => m.userId === user.id);
+  const wins = rows.filter((m) => m.result === 'won').length;
+  const goals = rows.filter((m) => {
+    const ch = db.challenges.find((c) => c.id === m.challengeId);
+    return !!ch && medalFor(db, ch, m, today) !== null;
+  }).length;
+  const crew = db.crew.filter((c) => c.userId === user.id).length;
+  const detailed = db.workouts.filter((w) => w.userId === user.id && (w.minutes || w.note || w.exercises.length)).length;
+  // The most steps in one day in any single challenge (a day's steps can sit in several challenges at once).
+  const stepDays = new Map<string, number>();
+  for (const l of mine) if (l.type === 'steps') stepDays.set(`${l.challengeId}:${l.date}`, (stepDays.get(`${l.challengeId}:${l.date}`) ?? 0) + l.amount);
+  const bestSteps = Math.max(0, ...stepDays.values());
+  const led = db.challenges.filter((c) => c.creatorId === user.id && roster(db, c).length >= 2).length;
+  const forfeits = db.flairs.filter((f) => f.userId === user.id && f.kind === 'forfeit').length;
+
+  const count = (id: string, emoji: string, title: string, text: string, have: number, need: number, noun: string, gold = false): Achievement => ({
+    id, emoji, title, text, gold,
+    earned: have >= need,
+    progress: Math.min(1, have / need),
+    progressText: have >= need ? 'Earned' : `${fmt(Math.min(have, need))} of ${fmt(need)} ${noun}`,
+  });
+  return [
+    count('first', '👣', 'First step', 'Log your first workout.', workouts, 1, 'workouts'),
+    count('w10', '🔟', 'Ten down', 'Log 10 workouts.', workouts, 10, 'workouts'),
+    count('w50', '🎯', 'Fifty', 'Log 50 workouts.', workouts, 50, 'workouts'),
+    count('w100', '💯', 'Century', 'Log 100 workouts.', workouts, 100, 'workouts', true),
+    count('s3', '🎩', 'Hat trick', 'Log three days in a row.', longestStreak, 3, 'days'),
+    count('s7', '📅', 'Full week', 'Log seven days in a row.', longestStreak, 7, 'days'),
+    count('s30', '🔥', 'Unstoppable', 'Log thirty days in a row.', longestStreak, 30, 'days', true),
+    count('goal1', '🏁', 'Finisher', 'Reach your goal in a challenge.', goals, 1, 'challenges'),
+    count('goal5', '🎖️', 'Regular', 'Reach your goal in five challenges.', goals, 5, 'challenges'),
+    count('win1', '🏆', 'Champion', 'Win a challenge.', wins, 1, 'wins'),
+    count('win3', '👑', 'Dynasty', 'Win three challenges.', wins, 3, 'wins', true),
+    count('crew3', '👯', 'Good company', 'Have three people in your crew.', crew, 3, 'people'),
+    count('lead', '📣', 'Ringleader', 'Start a challenge that someone else joins.', led, 1, 'challenges'),
+    count('steps', '👟', 'Ten thousand', 'Walk 10,000 steps in a day in a steps challenge.', bestSteps, 10000, 'steps'),
+    count('variety', '🤹', 'All-rounder', 'Log four different kinds of workout.', activities, 4, 'kinds'),
+    count('notes', '📒', 'Bookkeeper', 'Add details to a workout.', detailed, 1, 'workouts'),
+    count('sport', '🤝', 'Good sport', 'Wear a forfeit badge and take it well.', forfeits, 1, 'forfeits'),
+  ];
+}
+
 export function meFor(db: DB, user: User, today: string): MeData {
   const { current, longest } = streaks(db, user.id, today);
   const rows = db.members.filter((m) => m.userId === user.id);
@@ -323,6 +419,7 @@ export function meFor(db: DB, user: User, today: string): MeData {
 
   return {
     user: meView(user),
+    achievements: achievementsFor(db, user, today, longest),
     streak: current,
     longestStreak: longest,
     completed: rows.filter((m) => m.result === 'won' || m.result === 'finished').length,
@@ -616,6 +713,7 @@ export function detailFor(db: DB, ch: Challenge, viewer: User | null, today: str
     timeFraction: finished ? 1 : Math.min(1, Math.max(0, diffDays(today, w.start) / ch.lengthDays)),
     rangeText: rangeText(w.start, w.end),
     consequence,
+    stakes: stakesFor(ch),
     rename: renameView(db, ch, consequence, standings.filter((s) => s.onTheHook).map((s) => s.id), youWon, viewer?.id),
     hero: {
       rank: mineRow ? `#${rank.get(mineRow.u.id)}` : '—',
@@ -711,6 +809,7 @@ export function houseFor(db: DB, user: User, today: string): HouseCard[] {
       id: ch.id,
       name: ch.name,
       type: ch.type,
+      stakes: stakesFor(ch),
       targetText: targetText(ch),
       memberCount: roster(db, ch).filter((m) => isActive(ch, m, today)).length,
       joined: isActive(ch, memberOf(db, ch, user.id), today),
@@ -951,6 +1050,7 @@ export function deleteChallenge(db: DB, ch: Challenge, user: User): void {
   db.invites = db.invites.filter((x) => !gone(x));
   db.removals = db.removals.filter((x) => !gone(x));
   db.renames = db.renames.filter((x) => !gone(x));
+  db.flairs = db.flairs.filter((x) => !gone(x));
   // A person's own logs stay as plain workouts; step counts written by syncing only existed for the challenge.
   db.logs = db.logs.filter((l) => !(gone(l) && l.auto));
   for (const log of db.logs) if (gone(log)) log.challengeId = null;
@@ -960,4 +1060,5 @@ export function endEarly(db: DB, ch: Challenge, user: User, today: string): void
   requireCommissioner(db, ch, user, today);
   ch.endAt = addDays(today, 1);
   finish(db, ch, today);
+  applyFlairs(db, today); // so the answer to this very request already shows who is wearing what
 }

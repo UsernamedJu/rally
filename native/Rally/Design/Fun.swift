@@ -211,9 +211,15 @@ private struct Bobbing: ViewModifier {
         if reduce {
             content
         } else {
-            content.phaseAnimator([0.0, 1.0]) { view, phase in
-                view.offset(y: phase == 1 ? -5 : 2).rotationEffect(.degrees(phase == 1 ? 4 : -3))
-            } animation: { _ in .easeInOut(duration: 1.6) }
+            // Position worked out from the clock, with no animation attached to the view. An animator
+            // here would also animate everything else about the view as it first appears, colors
+            // included: a dark tile would visibly fade in from the light theme's white.
+            TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+                let swing = sin(timeline.date.timeIntervalSinceReferenceDate * 2 * .pi / 3.2)
+                content
+                    .offset(y: -1.5 - swing * 3.5)
+                    .rotationEffect(.degrees(swing * 3.5))
+            }
         }
     }
 }

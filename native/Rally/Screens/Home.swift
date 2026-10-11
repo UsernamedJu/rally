@@ -121,6 +121,8 @@ struct HomeView: View {
         .loads(remote)
         .task(id: remote.data?.user.workoutTime) {
             guard let d = remote.data else { return }
+            // Debug only: -RallyOpenFirst YES goes straight into the first challenge.
+            if DebugDemo.flag("RallyOpenFirst"), router.home.isEmpty, let first = d.challenges.first { router.show(challenge: first.id) }
             await Reminders.schedule(enabled: d.user.notifications, time: d.user.workoutTime, friend: d.crew.first?.name)
             await StepSync.shared.sync()
             await Nudges.afterHomeLoads(d, router: router)

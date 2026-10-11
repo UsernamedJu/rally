@@ -53,6 +53,10 @@ struct CheckInView: View {
                             justLogged = false
                             let streak = data.streak
                             DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { Nudges.streakReached(streak) }
+                            Task {
+                                try? await Task.sleep(for: .seconds(3.5))
+                                await Achievements.check()
+                            }
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { party += 1 }
                         }
                     }

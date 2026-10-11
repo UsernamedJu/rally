@@ -18,7 +18,7 @@ nonisolated enum Copy {
     /** A picture for a consequence: the suggestions each have their own, anything else gets a fitting guess. */
     static func consequenceEmoji(_ text: String) -> String {
         let t = text.lowercased()
-        for (word, e) in [("coffee", "☕️"), ("dinner", "🍽️"), ("lunch", "🥪"), ("last name", "📛"), ("video", "🎥"), ("wear", "👕"), ("chore", "🧹"), ("sing", "🎤"),
+        for (word, e) in [("gym bag", "🎒"), ("smoothie", "🥤"), ("dog", "🐕"), ("costume", "🦸"), ("water", "💧"), ("tire", "🛞"), ("streamer", "🎀"), ("front row", "🙋"), ("mat", "🧘"), ("stairs", "🪜"), ("route", "🗺️"), ("coffee", "☕️"), ("dinner", "🍽️"), ("lunch", "🥪"), ("last name", "📛"), ("video", "🎥"), ("wear", "👕"), ("chore", "🧹"), ("sing", "🎤"),
                           ("snack", "🍿"), ("movie", "🎬"), ("dance", "💃"), ("cook", "🍳"), ("pizza", "🍕"), ("drink", "🥤"), ("photo", "📸"), ("song", "🎵"), ("wash", "🧽"), ("car", "🚗")] where t.contains(word) {
             return e
         }
@@ -35,6 +35,19 @@ nonisolated enum Copy {
         default: "👋"
         }
     }
+
+    /** Real-life consequences that suit one kind of challenge. Offered first, ahead of the general ones. */
+    static let themedConsequences: [String: [String]] = [
+        "gym": ["Carries the winner's gym bag for a week", "Buys the post-workout smoothies"],
+        "walk": ["Walks the winner's dog", "Carries the snacks on the next walk"],
+        "run": ["Runs the next one in a costume", "Brings water for everyone's next run"],
+        "bike": ["Pumps everyone's tires", "Rides with streamers on the handlebars"],
+        "class": ["Takes the front row next class", "Carries the winner's mat to class"],
+        "steps": ["Takes the stairs all week", "Walks to pick up everyone's coffee"],
+        "miles": ["Plans the next route for everyone", "Wears the crew's pick on the next outing"],
+    ]
+
+    static func suggestions(for type: String) -> [String] { (themedConsequences[type] ?? []) + consequenceSuggestions }
 
     // Placeholder until the off limits list is decided. Money is the one firm rule.
     private static let offLimits = try! NSRegularExpression(

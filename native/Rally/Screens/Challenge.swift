@@ -57,6 +57,9 @@ struct ChallengeContent<Footer: View>: View {
                 .overlay(alignment: .topLeading) {
                     Text(statusTag)
                         .font(.footnote.weight(.semibold))
+                        // Set outright: text left to take its color from the glass disappears inside the
+                        // settle effect's layer, leaving only the emoji.
+                        .foregroundStyle(Palette.ink)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .glassEffect(.regular, in: .capsule)
@@ -80,37 +83,37 @@ struct ChallengeContent<Footer: View>: View {
             }
             .settles(0)
 
+            // 1. Where you are, and how long is left.
             if let me = detail.standings.first(where: \.isYou), detail.status != "done" {
-                YourProgressCard(row: me, waiting: detail.status == "waiting").settles(1)
-            }
-
-            if detail.you.member || detail.you.medal != nil {
-                RewardCard(detail: detail).settles(1)
+                YourProgressCard(row: me, waiting: detail.status == "waiting", daysLeft: detail.daysLeftText, range: detail.rangeText, timeFraction: detail.timeFraction)
+                    .settles(1)
+            } else {
+                HStack {
+                    Text("🗓️ \(detail.daysLeftText)").font(.label).accessibilityLabel(detail.daysLeftText)
+                    Spacer()
+                    Text(detail.rangeText).font(.footnote).foregroundStyle(Palette.stone)
+                }
+                .settles(1)
             }
 
             if detail.type == "steps", live {
                 StepsNote().settles(1)
             }
 
-            if detail.standings.count >= 2, detail.status == "live", let leader = detail.standings.first, leader.percent > 0 {
-                HStack(spacing: Metrics.gap) {
-                    Text("👑").font(.title2).bobbing().accessibilityHidden(true)
-                    Text(leader.isYou ? "You're in the lead. Keep it that way." : "\(leader.name) is in the lead.")
-                        .font(.label)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, Metrics.card)
-                .padding(.vertical, 14)
-                .background(Palette.card, in: .rect(cornerRadius: Metrics.radius))
-                .settles(1)
-            }
-
-            if detail.standings.count >= 2 {
-                Group {
-                    if dynamicType.isAccessibilitySize {
-                        VStack(spacing: 8) { hero(stacked: true) }
-                    } else {
-                        HStack(spacing: 8) { hero(stacked: false) }
+            if let result = detail.resultText {
+                Card {
+                    if detail.winnerName != nil {
+                        // The confetti waits for the trophy, so the two land together and nothing stalls mid-burst.
+                        Trophy3D(height: 170, onReady: {
+                            if detail.you.result == "won", Splash.claim("won:\(detail.id)") { party += 1 }
+                        })
+                        .frame(maxWidth: .infinity)
+                    }
+                    HStack(spacing: Metrics.gap) {
+                        Image(systemName: detail.winnerName != nil ? "trophy.fill" : "flag.checkered")
+                            .font(.title2)
+                            .foregroundStyle(Palette.accent)
+                        Text(result).font(.label)
                     }
                 }
                 .settles(1)
@@ -132,84 +135,58 @@ struct ChallengeContent<Footer: View>: View {
                 .transition(.liquid)
             }
 
-            if let result = detail.resultText {
-                Card {
-                    if detail.winnerName != nil {
-                        // The confetti waits for the trophy, so the two land together and nothing stalls mid-burst.
-                        Trophy3D(height: 170, onReady: {
-                            if detail.you.result == "won", Splash.claim("won:\(detail.id)") { party += 1 }
-                        })
-                        .frame(maxWidth: .infinity)
-                    }
-                    HStack(spacing: Metrics.gap) {
-                        Image(systemName: detail.winnerName != nil ? "trophy.fill" : "flag.checkered")
-                            .font(.title2)
-                            .foregroundStyle(Palette.accent)
-                        Text(result).font(.label)
-                    }
-                }
-                .settles(2)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("🗓️ \(detail.daysLeftText)").font(.label).accessibilityLabel(detail.daysLeftText)
-                    Spacer()
-                    Text(detail.rangeText).font(.footnote).foregroundStyle(Palette.stone)
-                }
-                LiquidBar(fraction: detail.timeFraction, fill: Palette.ink, height: 6)
-            }
-            .settles(2)
-
-            if live, detail.members.count < 2, detail.status != "done" {
-                Card {
-                    HStack(spacing: Metrics.gap) {
-                        SymbolArt(symbol: "person.2.fill", size: 56)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Better with friends 👯").font(.headline).accessibilityLabel("Better with friends")
-                            Text("Invite a friend and make it a real contest.").font(.subheadline).foregroundStyle(Palette.stone)
-                        }
-                    }
-                    SecondaryButton(title: "Invite your crew", symbol: "person.badge.plus") { sheet = .invite }
-                }
-                .settles(2)
-            }
-
-            consequenceCard.settles(3)
-
-            if detail.rename != nil {
-                RenameCard(detail: detail, onChange: onChange).settles(4)
-            }
-
-            VStack(alignment: .leading, spacing: Metrics.gap) {
-                Text("🏅 Standings").font(.heading).accessibilityLabel("Standings")
-                VStack(spacing: 4) {
-                    ForEach(Array(detail.standings.enumerated()), id: \.element.id) { i, row in
-                        StandingRow(row: row, medals: detail.standings.count >= 2).settles(i + 1)
-                    }
-                }
-                .padding(8)
-                .background(Palette.card, in: .rect(cornerRadius: Metrics.radius))
-            }
-            .settles(5)
-
             ForEach(detail.alerts, id: \.self) { alert in
                 Card {
                     Label(alert, systemImage: "bell.badge.fill").symbolRenderingMode(.multicolor)
                 }
             }
 
+            // 2. Everyone else.
             VStack(alignment: .leading, spacing: Metrics.gap) {
-                Text("👥 Crew").font(.heading).accessibilityLabel("Crew")
-                Card {
-                    HStack {
-                        AvatarStack(people: Array(detail.members.prefix(6)), total: detail.members.count, size: 36)
-                        Spacer()
-                        if live { SecondaryButton(title: "Invite more", symbol: "person.badge.plus", compact: true) { sheet = .invite } }
+                HStack(alignment: .firstTextBaseline) {
+                    Text("🏅 Standings").font(.heading).accessibilityLabel("Standings")
+                    Spacer()
+                    if detail.standings.count >= 2, detail.status == "live", let leader = detail.standings.first, leader.percent > 0 {
+                        Text(leader.isYou ? "👑 You lead" : "👑 \(leader.name) leads").font(.label).foregroundStyle(Palette.stone)
                     }
                 }
+                VStack(spacing: 4) {
+                    ForEach(Array(detail.standings.enumerated()), id: \.element.id) { i, row in
+                        StandingRow(row: row, medals: detail.standings.count >= 2).settles(i + 1)
+                    }
+                    Divider().padding(.horizontal, 8).padding(.vertical, 4)
+                    HStack {
+                        AvatarStack(people: Array(detail.members.prefix(6)), total: detail.members.count, size: 30)
+                        Spacer()
+                        if live {
+                            SecondaryButton(title: detail.members.count < 2 ? "Invite your crew" : "Invite more", symbol: "person.badge.plus", compact: true) { sheet = .invite }
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 4)
+                }
+                .padding(8)
+                .background(Palette.card, in: .rect(cornerRadius: Metrics.radius))
             }
-            .settles(6)
+            .padding(.top, Metrics.gap)
+            .settles(2)
+
+            // 3. What it is all for.
+            VStack(alignment: .leading, spacing: Metrics.gap) {
+                Text("⚔️ What's at stake").font(.heading).accessibilityLabel("What's at stake")
+                if MedalView.kind(detail.you.medal) != nil {
+                    RewardCard(detail: detail)
+                }
+                if let stakes = detail.stakes {
+                    StakesCard(stakes: stakes, medal: detail.you.member && detail.you.medal == nil && detail.status != "done")
+                }
+                consequenceCard
+                if detail.rename != nil {
+                    RenameCard(detail: detail, onChange: onChange)
+                }
+            }
+            .padding(.top, Metrics.gap)
+            .settles(3)
 
             if sheet == nil { ErrorLine(text: error) }
             if detail.you.commissioner {
@@ -248,15 +225,9 @@ struct ChallengeContent<Footer: View>: View {
         }
     }
 
-    @ViewBuilder private func hero(stacked: Bool) -> some View {
-        HeroStat(value: detail.hero.rank, label: "Rank", stacked: stacked)
-        HeroStat(value: detail.hero.progress, label: "Progress", stacked: stacked)
-        HeroStat(value: detail.hero.people, label: "People", stacked: stacked)
-    }
-
     @ViewBuilder private var consequenceCard: some View {
         Card(tint: true) {
-            Text("🎯 Consequence").font(.heading).accessibilityLabel("Consequence")
+            Text("🎯 In real life").font(.label).foregroundStyle(Palette.stone).accessibilityLabel("Real-life consequence")
             if let c = detail.consequence {
                 if c.status == "none" {
                     Text("🤝 Nothing agreed yet")
@@ -287,7 +258,7 @@ struct ChallengeContent<Footer: View>: View {
                     }
                 }
             } else {
-                Text("😎 No consequence on this one. Just bragging rights.")
+                Text(detail.house ? "Nothing on this one. The badges are the stakes." : "😎 No real-life consequence on this one.")
             }
         }
     }
@@ -310,6 +281,9 @@ struct ChallengeContent<Footer: View>: View {
 private struct YourProgressCard: View {
     var row: Standing
     var waiting: Bool
+    var daysLeft: String
+    var range: String
+    var timeFraction: Double
     @State private var shown = 0.0
     @Environment(\.accessibilityReduceMotion) private var reduce
 
@@ -336,7 +310,7 @@ private struct YourProgressCard: View {
                         .font(.system(.title3, design: .rounded).weight(.bold))
                         .contentTransition(.numericText())
                 }
-                .frame(width: 84, height: 84)
+                .frame(width: 72, height: 72)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Your progress").font(.label).foregroundStyle(Palette.stone)
                     Text(row.label).font(.heading)
@@ -344,11 +318,58 @@ private struct YourProgressCard: View {
                 }
                 Spacer(minLength: 0)
             }
+            VStack(spacing: 6) {
+                LiquidBar(fraction: timeFraction, fill: Palette.ink, height: 4)
+                HStack {
+                    Text(daysLeft).font(.footnote.weight(.medium))
+                    Spacer()
+                    Text(range).font(.footnote).foregroundStyle(Palette.stone)
+                }
+            }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Your progress: \(row.label), \(row.percent) percent.")
+        .accessibilityLabel("Your progress: \(row.label), \(row.percent) percent. \(daysLeft).")
         .onAppear { withAnimation(reduce ? nil : Motion.wave.delay(0.25)) { shown = min(1, row.fraction) } }
         .onChange(of: row.fraction) { _, f in withAnimation(reduce ? nil : Motion.wave) { shown = min(1, f) } }
+    }
+}
+
+/**
+ * What is on the line inside the app: the badge the winner wears on their avatar, and the one last place
+ * has to. Two tiles side by side, so the choice between them is obvious at a glance.
+ */
+private struct StakesCard: View {
+    var stakes: Stakes
+    /** Whether to mention the medal still to be earned. */
+    var medal: Bool
+
+    var body: some View {
+        Card {
+            HStack(spacing: Metrics.gap) {
+                tile(stakes.reward, title: stakes.solo ? "Finish it" : "Win it", reward: true)
+                Divider().frame(height: 40)
+                tile(stakes.forfeit, title: stakes.solo ? "Miss it" : "Come last", reward: false)
+            }
+            Text((stakes.reward.days == stakes.forfeit.days
+                  ? "Worn on your avatar for \(stakes.reward.days) days, where everyone sees it."
+                  : "Worn on your avatar where everyone sees it: \(stakes.reward.days) days for the good one, \(stakes.forfeit.days) for the other.")
+                 + (medal ? " Reach your goal and there's a medal too." : ""))
+                .font(.footnote).foregroundStyle(Palette.stone)
+        }
+    }
+
+    private func tile(_ badge: Badge, title: String, reward: Bool) -> some View {
+        HStack(spacing: 10) {
+            // A sample avatar wearing it, so it is clear where the badge goes.
+            AvatarView(person: Person(id: "", name: reward ? "W" : "L", avatar: reward ? 1 : 3, flair: Flair(emoji: badge.emoji, kind: reward ? "reward" : "forfeit")), size: 40)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title.uppercased()).font(.caption2.weight(.bold)).foregroundStyle(reward ? Color(red: 0.86, green: 0.60, blue: 0.13) : Palette.stone)
+                Text(badge.title).font(.subheadline.weight(.semibold)).lineLimit(2).minimumScaleFactor(0.8)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -512,7 +533,7 @@ private struct ProposeSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Metrics.gap * 1.5) {
                 Text("Consequence for last place?").font(.heading)
-                ConsequencePicker(value: $draft, context: "\(detail.name), \(detail.targetText)")
+                ConsequencePicker(value: $draft, context: "\(detail.name), \(detail.targetText)", type: detail.type)
                 Text("Your crew votes on this. No money, nothing mean.").font(.footnote).foregroundStyle(Palette.stone)
                 ErrorLine(text: error)
                 PrimaryButton(title: "Propose it", busy: busy, disabled: draft.trimmed.isEmpty || Copy.consequenceProblem(draft) != nil) {

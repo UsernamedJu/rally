@@ -25,6 +25,8 @@ export type User = {
   /** Only ever set in memory, by `load()`, while a winner's last name is in effect. `save()` puts it back. */
   realName?: string;
   nameChange?: NameChange;
+  /** Only ever set in memory, per request: the badge this person is wearing today. Never saved. */
+  flair?: { emoji: string; kind: 'reward' | 'forfeit'; title: string; challengeName: string; until: string };
 };
 export type Crew = { userId: string; friendUserId: string };
 export type Challenge = {
@@ -110,7 +112,10 @@ export type DB = {
   removals: Removal[];
   renames: Rename[];
   workouts: WorkoutDetail[];
+  flairs: FlairRow[];
 };
+/** A badge handed out when a challenge ended. `from` is the day it started, `until` the first day it is gone. */
+export type FlairRow = { userId: string; challengeId: string; kind: 'reward' | 'forfeit'; from: string; until: string };
 
 export class HttpError extends Error {
   status: number;
@@ -162,7 +167,7 @@ const HOUSE: Pick<Challenge, 'id' | 'name' | 'type' | 'target' | 'per' | 'length
 // The file is small enough to read on every request, which also lets the seed script
 // edit it while the server is running.
 export function load(): DB {
-  const db: DB = { users: [], crew: [], challenges: [], members: [], logs: [], consequences: [], invites: [], removals: [], renames: [], workouts: [] };
+  const db: DB = { users: [], crew: [], challenges: [], members: [], logs: [], consequences: [], invites: [], removals: [], renames: [], workouts: [], flairs: [] };
   if (existsSync(DATA_FILE)) Object.assign(db, JSON.parse(readFileSync(DATA_FILE, 'utf8')));
   for (const u of db.users) {
     if (!isBand(u.band)) u.band = 'active';
@@ -222,7 +227,7 @@ export function applyRenames(db: DB): void {
 export function save(db: DB): void {
   mkdirSync(dirname(DATA_FILE), { recursive: true });
   const tmp = `${DATA_FILE}.tmp`;
-  const users = db.users.map(({ realName, nameChange: _change, ...u }) => (realName === undefined ? u : { ...u, name: realName }));
+  const users = db.users.map(({ realName, nameChange: _change, flair: _flair, ...u }) => (realName === undefined ? u : { ...u, name: realName }));
   writeFileSync(tmp, JSON.stringify({ ...db, users }, null, 2));
   renameSync(tmp, DATA_FILE);
 }

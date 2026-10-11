@@ -63,6 +63,26 @@ export function personalTarget(type: ChallengeType, base: number, band: Band, ho
   return Math.max(0.5, Math.round(raw * 2) / 2);
 }
 
+// ---------- stakes ----------
+// What a challenge puts on the line inside the app, themed to what it is. Whoever wins wears the reward
+// badge on their avatar for a week; whoever comes last wears the forfeit. Open challenges have no
+// opponents, so there it comes down to whether you reached the goal.
+
+export type Badge = { emoji: string; title: string };
+export const STAKES: Record<ChallengeType, { reward: Badge; forfeit: Badge }> = {
+  gym: { reward: { emoji: '💪', title: 'Iron' }, forfeit: { emoji: '🥔', title: 'Couch potato' } },
+  walk: { reward: { emoji: '👟', title: 'Golden shoes' }, forfeit: { emoji: '🐌', title: 'Snail' } },
+  run: { reward: { emoji: '🚀', title: 'Rocket' }, forfeit: { emoji: '🐢', title: 'Tortoise' } },
+  bike: { reward: { emoji: '💨', title: 'Breakaway' }, forfeit: { emoji: '🛴', title: 'Training wheels' } },
+  class: { reward: { emoji: '🧘', title: 'Zen master' }, forfeit: { emoji: '😴', title: 'Slept in' } },
+  steps: { reward: { emoji: '⚡️', title: 'Lightning' }, forfeit: { emoji: '🦥', title: 'Sloth' } },
+  miles: { reward: { emoji: '🗺️', title: 'Trailblazer' }, forfeit: { emoji: '⚓️', title: 'Anchor' } },
+  custom: { reward: { emoji: '👑', title: 'Champion' }, forfeit: { emoji: '🤡', title: 'Clown' } },
+};
+export const REWARD_DAYS = 7;
+/** A week when your crew put you there; three days when you only let yourself down. */
+export const forfeitDays = (house: boolean) => (house ? 3 : 7);
+
 export const TRACK_TYPES: TrackType[] = ['gym', 'walk', 'run', 'bike', 'class', 'steps', 'miles'];
 
 export const ACTIVITIES: { key: Activity; label: string; fits: ChallengeType[]; tracks: TrackType | null }[] = [

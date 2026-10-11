@@ -4,6 +4,7 @@ import http from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { isDate, localDate } from '../shared/catalog.ts';
 import {
+  applyFlairs,
   deleteChallenge, syncSteps, updateWorkout, workoutLog,
   acceptInvite, agreeConsequence, canView, challengeById, checkinFor, createChallenge, detailFor, endEarly,
   friendFor, homeFor, houseFor, inviteByToken, inviteFor, invitePreview, isActive, join, logCheckin, meFor,
@@ -191,6 +192,7 @@ const server = http
       const today = isDate(header) ? header : localDate();
       const db = load();
       const settled = settle(db, today);
+      applyFlairs(db, today);
       const token = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
       const user = (token && db.users.find((u) => u.token === token)) || null;
       if (found.r.auth && !user) throw new HttpError(401, 'Please sign in again.');

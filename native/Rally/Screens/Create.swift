@@ -58,7 +58,7 @@ struct CreateView: View {
                                 .animation(Motion.fluid, value: target)
                         }
                     case 2:
-                        ConsequencePicker(value: $consequence, context: "\(spec.name), \(Catalog.targetText(type: kind, target: target, per: per, lengthDays: lengthDays))")
+                        ConsequencePicker(value: $consequence, context: "\(spec.name), \(Catalog.targetText(type: kind, target: target, per: per, lengthDays: lengthDays))", type: kind)
                         Text("Your crew votes on this once they're in. No money, nothing mean.").font(.footnote).foregroundStyle(Palette.stone)
                     default:
                         InviteComposer(spec: spec, getToken: { try await create().token }, onFinish: { dismiss() }, onSkip: {
@@ -146,16 +146,18 @@ struct CreateView: View {
 struct ConsequencePicker: View {
     @Binding var value: String
     var context: String
+    /** The kind of challenge, so the suggestions can suit it. */
+    var type: String = "custom"
     @State private var ideas: [String] = []
     @State private var thinking = false
     @State private var failed = false
     @State private var seen = Set(Copy.consequenceSuggestions.map { $0.lowercased() })
 
-    private var suggested: Bool { Copy.consequenceSuggestions.contains(value) }
+    private var suggested: Bool { Copy.suggestions(for: type).contains(value) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Metrics.gap) {
-            ChipPicker(options: Copy.consequenceSuggestions.map { ChipOption(id: $0, label: $0, emoji: Copy.consequenceEmoji($0)) }, selection: suggested ? value : nil) { v in
+            ChipPicker(options: Copy.suggestions(for: type).map { ChipOption(id: $0, label: $0, emoji: Copy.consequenceEmoji($0)) }, selection: suggested ? value : nil) { v in
                 value = v == value ? "" : v
             }
             if Intelligence.available {
