@@ -19,6 +19,15 @@ enum Nudges {
 
     private static var lastHomeNudge = Date.distantPast
 
+    /** A friend put you in a challenge: said once, as soon as Home shows it. */
+    static func addedToChallenges(_ home: HomeData, router: Router) {
+        for c in home.challenges {
+            guard let by = c.addedBy, once("added:\(c.id)", days: 3650) else { continue }
+            Toaster.shared.show(Toast(emoji: "🙌", title: "\(by) added you to \(c.name)", detail: c.targetShort.prefix(1).uppercased() + c.targetShort.dropFirst() + ".",
+                                      actionTitle: "Open", action: { router.show(challenge: c.id) }, seconds: 7))
+        }
+    }
+
     /** Looks at what Home just loaded and shows the single most useful note, if there is one. */
     static func afterHomeLoads(_ home: HomeData, router: Router) async {
         // Not on every pull to refresh: once per stretch of using the app.
@@ -133,12 +142,12 @@ enum WhatsNew {
     }
 
     /** The build these notes describe. Anyone coming from an older build sees them once. */
-    static let build = 6
+    static let build = 9
     static let notes = [
-        Note(emoji: "⚔️", title: "Something at stake", text: "Every challenge now has a badge to win and one to avoid. They match the challenge, and they show on your avatar for the whole crew to see."),
-        Note(emoji: "👑", title: "Winners wear it", text: "Win and you get the good badge with a gold ring for a week. Come last and you're stuck with the other one."),
-        Note(emoji: "🏅", title: "Achievements", text: "17 medals to collect for streaks, wins, workouts and more. Find them on your Me page and tap one to see what it takes."),
-        Note(emoji: "🧹", title: "A tidier challenge page", text: "Your progress, the standings and the stakes each have their own space now."),
+        Note(emoji: "🙌", title: "Add friends straight in", text: "Anyone already in your crew can be added to a challenge with one tap. No link to send, nothing for them to open."),
+        Note(emoji: "🏊", title: "52 kinds of workout", text: "Say exactly what you did, and log it the way it's measured: miles for a hike, laps for a swim, rounds for HIIT, holes for golf."),
+        Note(emoji: "⏱️", title: "Active minutes challenges", text: "A new kind of challenge where any workout counts, by how long it took."),
+        Note(emoji: "⚔️", title: "Something at stake", text: "Every challenge has a badge to win and one to avoid, shown on your avatar. There are 17 achievement medals on your Me page too."),
     ]
 
     private static let key = "whatsNewSeen"

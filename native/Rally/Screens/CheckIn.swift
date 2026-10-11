@@ -116,6 +116,8 @@ struct LogFlow: View {
     var onLogged: () -> Void = {}
     var onFinish: () -> Void
     var onNotToday: (() -> Void)? = nil
+    /** Debug only: opens at "what did you do" with a trail run filled in. */
+    var demo = false
 
     private enum Phase { case ask, what, no, logged }
 
@@ -124,7 +126,7 @@ struct LogFlow: View {
     @State private var activity: String?
     @State private var picked: [String] = []
     @State private var pickedByHand = false
-    @State private var amounts: [String: Double] = ["steps": 6000, "miles": 2]
+    @State private var amounts: [String: Double] = ["steps": 6000, "miles": 2, "minutes": 30]
     @State private var result: CheckinResult?
     @State private var busy = false
     @State private var error: String?
@@ -134,9 +136,19 @@ struct LogFlow: View {
 
     private var open: [CheckinChallenge] { data.challenges.filter { !$0.loggedToday } }
     private var chosen: [CheckinChallenge] { open.filter { picked.contains($0.id) } }
+    /** The specific workouts under the activity picked, and the one chosen. */
+    private var kinds: [WorkoutOption] { (data.workouts ?? []).filter { $0.activity == activity } }
+    private var kind: WorkoutOption? { kinds.first { $0.key == details.workout } }
+
+    /** The exact number the workout already gave for a challenge type, so it is not asked for twice. */
+    private func measured(_ type: String) -> Double? {
+        guard let kind, let n = details.amountValue, n <= kind.max else { return nil }
+        return (type == "miles" && kind.unit == "mi") || (type == "minutes" && kind.unit == "min") ? n : nil
+    }
+
     private var numericTypes: [String] {
         var seen: [String] = []
-        for c in chosen where c.numeric && !seen.contains(c.type) { seen.append(c.type) }
+        for c in chosen where c.numeric && !seen.contains(c.type) && measured(c.type) == nil { seen.append(c.type) }
         return seen
     }
 
@@ -155,12 +167,19 @@ struct LogFlow: View {
         } footer: {
             footer
         }
-        .overlay { ConfettiBurst(trigger: party, emoji: ["🎉", "💪", Catalog.emoji(activity ?? "other")]) }
+        .overlay { ConfettiBurst(trigger: party, emoji: ["🎉", "💪", kind?.emoji ?? Catalog.emoji(activity ?? "other")]) }
         .animation(Motion.wave, value: phase)
         .onAppear {
             if let preset, picked.isEmpty {
                 picked = [preset]
                 pickedByHand = true
+            }
+            if demo, phase == .ask {
+                phase = .what
+                activity = "run"
+                details.workout = "trail_run"
+                details.amount = "3.4"
+                carryMetric()
             }
         }
     }
@@ -194,6 +213,36 @@ struct LogFlow: View {
         Card {
             Text("Nice. What did you do? 🙌").font(.heading).accessibilityLabel("Nice. What did you do?")
             ChipPicker(options: Catalog.activities.map { ChipOption(id: $0.key, label: $0.label, emoji: Catalog.emoji($0.key)) }, selection: activity) { choose($0) }
+            if !kinds.isEmpty {
+                Text("Which kind?").font(.label).padding(.top, 8)
+                ChipPicker(options: kinds.map { ChipOption(id: $0.key, label: $0.label, emoji: $0.emoji) }, selection: details.workout) { key in
+                    withAnimation(Motion.fluid) {
+                        details.workout = details.workout == key ? nil : key
+                        details.amount = ""
+                    }
+                }
+                .transition(.liquid)
+            }
+            if let kind {
+                // Each workout is measured its own way: a swim in laps, a hike in miles, yoga in minutes.
+                HStack(spacing: Metrics.gap) {
+                    Text("\(kind.emoji) \(kind.ask)").font(.label)
+                    Spacer(minLength: 0)
+                    TextField("0", text: $details.amount)
+                        .keyboardType(kind.whole ? .numberPad : .decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .font(.title3.weight(.semibold))
+                        .frame(width: 90)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 12)
+                        .background(Palette.inset, in: .rect(cornerRadius: 12))
+                        .accessibilityLabel(kind.ask)
+                    Text(kind.unit).font(.label).foregroundStyle(Palette.stone)
+                }
+                .padding(.top, 8)
+                .transition(.liquid)
+                .onChange(of: details.amount) { _, _ in carryMetric() }
+            }
             if !data.challenges.isEmpty {
                 Text("Count it toward").font(.label).padding(.top, 8)
                 MultiChipPicker(
@@ -225,6 +274,7 @@ struct LogFlow: View {
             ErrorLine(text: error)
         }
         .animation(Motion.fluid, value: numericTypes)
+        .animation(Motion.fluid, value: activity)
         .animation(Motion.fluid, value: showDetails)
     }
 
@@ -264,11 +314,29 @@ struct LogFlow: View {
     // ---------- actions ----------
 
     private func choose(_ a: String) {
+        if a != activity {
+            details.workout = nil
+            details.amount = ""
+        }
         activity = a
         guard !pickedByHand else { return }
         let fits = Catalog.activities.first { $0.key == a }?.fits ?? []
         let matching = open.filter { fits.contains($0.type) }
         picked = matching.count == 1 ? [matching[0].id] : []
+    }
+
+    /** What the workout measured fills in a challenge that counts the same thing, so it is typed once. */
+    private func carryMetric() {
+        guard let kind, let n = details.amountValue, n <= kind.max else { return }
+        func nearest(_ type: String, _ v: Double) -> Double {
+            let options = Catalog.logOptions(type)
+            return options.min { abs($0 - v) < abs($1 - v) } ?? v
+        }
+        if kind.unit == "mi" { amounts["miles"] = nearest("miles", n) }
+        if kind.unit == "min" {
+            amounts["minutes"] = nearest("minutes", n)
+            details.minutes = min(180, max(5, Int((n / 5).rounded()) * 5))
+        }
     }
 
     private func logIt() async {
@@ -277,12 +345,12 @@ struct LogFlow: View {
         error = nil
         let entries: [[String: Any]] = chosen.map { c in
             var e: [String: Any] = ["challengeId": c.id]
-            if let amount = amounts[c.type] { e["amount"] = amount }
+            if let amount = measured(c.type) ?? amounts[c.type] { e["amount"] = amount }
             return e
         }
         do {
             var body: [String: Any] = ["activity": activity, "entries": entries]
-            if !details.isEmpty { body["details"] = details.payload }
+            if !details.nothingToSend { body["details"] = details.payload }
             let res: CheckinResult = try await api.send("/checkin", body: body)
             result = res
             onLogged()

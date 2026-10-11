@@ -63,6 +63,8 @@ export type ChallengeCard = {
   daysLeftText: string;
   waiting: boolean;
   live: boolean;
+  /** The friend who put you in this one, when you did not join it yourself. */
+  addedBy?: string;
 };
 
 export type HomeData = {
@@ -80,6 +82,10 @@ export type Workout = {
   dateText: string;
   activity: Activity;
   activityLabel: string;
+  /** The specific workout, when one was picked: "Trail run", its emoji and "3.2 mi". */
+  kind: string | null;
+  kindEmoji: string | null;
+  metricText: string | null;
   minutes: number | null;
   note: string;
   exercises: Exercise[];
@@ -173,6 +179,8 @@ export type ChallengeDetail = {
     medal: Medal | null;
   };
   manage: (Person & { pending: boolean })[];
+  /** People in your crew who are not in this challenge yet, when you are in it and it is still running. */
+  addable: Person[];
 };
 
 export type CheckinChallenge = {
@@ -185,7 +193,8 @@ export type CheckinChallenge = {
   progressText: string;
 };
 
-export type CheckinData = { checkedIn: boolean; streak: number; challenges: CheckinChallenge[] };
+export type WorkoutOption = { key: string; label: string; emoji: string; activity: Activity; unit: string; ask: string; whole: boolean; max: number };
+export type CheckinData = { checkedIn: boolean; streak: number; challenges: CheckinChallenge[]; workouts: WorkoutOption[] };
 
 export type CheckinResult = { cards: ChallengeCard[]; previous: Record<string, number>; line: string; checkinId: string };
 

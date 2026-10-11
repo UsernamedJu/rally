@@ -219,7 +219,7 @@ struct ChallengeContent<Footer: View>: View {
         .sheet(item: $sheet) { kind in
             switch kind {
             case .propose: ProposeSheet(detail: detail, onChange: onChange)
-            case .invite: InviteSheet(detail: detail)
+            case .invite: InviteSheet(detail: detail, onChange: onChange)
             case .manage: ManageSheet(detail: detail, onChange: onChange)
             }
         }
@@ -559,13 +559,35 @@ private struct ProposeSheet: View {
 
 private struct InviteSheet: View {
     var detail: ChallengeDetail
+    var onChange: (ChallengeDetail) -> Void
     @Environment(API.self) private var api
     @Environment(\.dismiss) private var dismiss
+    @State private var adding: String?
+    @State private var error: String?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Metrics.gap) {
                 Text("Invite your crew").font(.heading)
+                if let addable = detail.addable, !addable.isEmpty {
+                    // People already in your crew go straight in: no link to send, nothing for them to tap.
+                    VStack(spacing: 0) {
+                        ForEach(addable) { p in
+                            HStack(spacing: Metrics.gap) {
+                                AvatarView(person: p, size: 36)
+                                Text(p.name).font(.label)
+                                Spacer()
+                                SecondaryButton(title: "Add", symbol: "plus", busy: adding == p.id, compact: true) { Task { await add(p) } }
+                            }
+                            .padding(.vertical, 8)
+                        }
+                    }
+                    .padding(.horizontal, Metrics.card)
+                    .padding(.vertical, 6)
+                    .background(Palette.card, in: .rect(cornerRadius: Metrics.radius))
+                    ErrorLine(text: error)
+                    Text("Or invite someone new").font(.label).padding(.top, 4)
+                }
                 InviteComposer(
                     spec: .init(type: detail.type, target: detail.target, per: detail.per, lengthDays: detail.lengthDays, name: detail.name, consequence: detail.consequence?.text),
                     getToken: {
@@ -577,6 +599,20 @@ private struct InviteSheet: View {
             .padding(Metrics.screen)
         }
         .presentationDetents([.medium, .large])
+        .animation(Motion.fluid, value: detail.addable)
+    }
+
+    private func add(_ p: Person) async {
+        adding = p.id
+        error = nil
+        do {
+            let next: ChallengeDetail = try await api.send("/challenges/\(detail.id)/add", body: ["userIds": [p.id]])
+            Toaster.shared.confirm("🙌", "\(p.name) is in")
+            onChange(next)
+        } catch {
+            self.error = error.localizedDescription
+        }
+        adding = nil
     }
 }
 

@@ -17,6 +17,14 @@ struct WorkoutDraft: Hashable {
     var exercises: [ExerciseDraft] = []
     /** Off means private, which is where it starts. */
     var shared = false
+    /** The specific workout picked while logging, and how much of its own measure. Not changed by editing later. */
+    var workout: String?
+    var amount = ""
+
+    var amountValue: Double? {
+        guard let n = Double(amount.replacingOccurrences(of: ",", with: ".")), n > 0 else { return nil }
+        return n
+    }
 
     init() {}
 
@@ -30,12 +38,18 @@ struct WorkoutDraft: Hashable {
         }
     }
 
+    /** Nothing typed into the optional details. The workout picked above them does not count. */
     var isEmpty: Bool { minutes == 0 && note.trimmed.isEmpty && exercises.allSatisfy { $0.name.trimmed.isEmpty } && !shared }
+    var nothingToSend: Bool { isEmpty && workout == nil }
 
     /** What the server takes. */
     var payload: [String: Any] {
         var out: [String: Any] = ["note": note.trimmed, "shared": shared]
         if minutes > 0 { out["minutes"] = minutes }
+        if let workout {
+            out["workout"] = workout
+            if let amountValue { out["amount"] = amountValue }
+        }
         out["exercises"] = exercises.filter { !$0.name.trimmed.isEmpty }.map { e -> [String: Any] in
             var row: [String: Any] = ["name": e.name.trimmed]
             if let n = Int(e.sets) { row["sets"] = n }
@@ -137,12 +151,15 @@ struct WorkoutRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: Metrics.gap) {
-                EmojiBadge(emoji: Catalog.emoji(workout.activity), size: 40)
+                EmojiBadge(emoji: workout.emoji, size: 40)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(workout.activityLabel).font(.headline)
+                    Text(workout.title).font(.headline)
                     Text(workout.dateText).font(.footnote).foregroundStyle(Palette.stone)
                 }
                 Spacer(minLength: 0)
+                if let metric = workout.metricText, !metric.hasSuffix(" min") {
+                    Text(metric).font(.footnote.weight(.semibold))
+                }
                 if let m = workout.minutes {
                     Label("\(m) min", systemImage: "clock").font(.footnote.weight(.medium)).foregroundStyle(Palette.stone)
                 }
@@ -220,9 +237,9 @@ private struct WorkoutEditSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Metrics.gap * 1.5) {
                     HStack(spacing: Metrics.gap) {
-                        EmojiBadge(emoji: Catalog.emoji(workout.activity))
+                        EmojiBadge(emoji: workout.emoji)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(workout.activityLabel).font(.heading)
+                            Text(workout.metricText.map { "\(workout.title), \($0)" } ?? workout.title).font(.heading)
                             Text(workout.dateText).font(.footnote).foregroundStyle(Palette.stone)
                         }
                     }

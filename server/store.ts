@@ -50,6 +50,8 @@ export type Member = {
   joinedDate: string;
   removedAt: string | null;
   result: Result | null;
+  /** The friend who added this person, when they did not join by themselves. */
+  addedBy?: string;
 };
 export type Log = {
   id: string;
@@ -72,6 +74,9 @@ export type WorkoutDetail = {
   note: string;
   exercises: { name: string; sets: number | null; reps: number | null; weight: number | null }[];
   shared: boolean;
+  /** The specific workout from the catalog, and how much of its own measure. */
+  workout?: string | null;
+  amount?: number | null;
 };
 export type Consequence = {
   challengeId: string;

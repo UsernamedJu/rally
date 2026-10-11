@@ -1,7 +1,7 @@
 // Shared by the app and the API server. The server runs this file directly with Node's
 // type stripping, so: explicit .ts imports, `import type` for types, no enums.
 
-export type ChallengeType = 'gym' | 'walk' | 'run' | 'bike' | 'class' | 'steps' | 'miles' | 'custom';
+export type ChallengeType = 'gym' | 'walk' | 'run' | 'bike' | 'class' | 'steps' | 'miles' | 'minutes' | 'custom';
 export type TrackType = Exclude<ChallengeType, 'custom'>;
 export type Activity = 'gym' | 'walk' | 'run' | 'bike' | 'class' | 'sport' | 'other';
 export type Per = 'day' | 'week' | 'total';
@@ -28,6 +28,7 @@ export const TYPES: Record<ChallengeType, TypeInfo> = {
   class: { label: 'Classes', one: 'class', many: 'classes', numeric: false, defaultPer: 'week', defaultTarget: 2, defaultName: 'Class challenge', noun: 'class' },
   steps: { label: 'Steps', one: 'step', many: 'steps', numeric: true, defaultPer: 'day', defaultTarget: 8000, defaultName: 'Steps challenge', noun: 'steps' },
   miles: { label: 'Miles', one: 'mile', many: 'miles', numeric: true, defaultPer: 'week', defaultTarget: 10, defaultName: 'Miles challenge', noun: 'miles' },
+  minutes: { label: 'Active minutes', one: 'minute', many: 'minutes', numeric: true, defaultPer: 'week', defaultTarget: 150, defaultName: 'Minutes challenge', noun: 'minutes' },
   custom: { label: 'Your own', one: 'session', many: 'sessions', numeric: false, defaultPer: 'week', defaultTarget: 3, defaultName: 'Challenge', noun: '' },
 };
 
@@ -60,6 +61,7 @@ export function personalTarget(type: ChallengeType, base: number, band: Band, ho
   if (!fairPlay(type, house)) return base;
   const raw = base * bandFactor(band);
   if (type === 'steps') return Math.max(500, Math.round(raw / 250) * 250);
+  if (type === 'minutes') return Math.max(5, Math.round(raw / 5) * 5);
   return Math.max(0.5, Math.round(raw * 2) / 2);
 }
 
@@ -77,23 +79,87 @@ export const STAKES: Record<ChallengeType, { reward: Badge; forfeit: Badge }> = 
   class: { reward: { emoji: '🧘', title: 'Zen master' }, forfeit: { emoji: '😴', title: 'Slept in' } },
   steps: { reward: { emoji: '⚡️', title: 'Lightning' }, forfeit: { emoji: '🦥', title: 'Sloth' } },
   miles: { reward: { emoji: '🗺️', title: 'Trailblazer' }, forfeit: { emoji: '⚓️', title: 'Anchor' } },
+  minutes: { reward: { emoji: '🔥', title: 'On fire' }, forfeit: { emoji: '🧊', title: 'Ice cold' } },
   custom: { reward: { emoji: '👑', title: 'Champion' }, forfeit: { emoji: '🤡', title: 'Clown' } },
 };
 export const REWARD_DAYS = 7;
 /** A week when your crew put you there; three days when you only let yourself down. */
 export const forfeitDays = (house: boolean) => (house ? 3 : 7);
 
+/** What someone can follow on their Me page. Minutes is a challenge type only. */
 export const TRACK_TYPES: TrackType[] = ['gym', 'walk', 'run', 'bike', 'class', 'steps', 'miles'];
 
 export const ACTIVITIES: { key: Activity; label: string; fits: ChallengeType[]; tracks: TrackType | null }[] = [
-  { key: 'gym', label: 'Gym', fits: ['gym', 'custom'], tracks: 'gym' },
-  { key: 'walk', label: 'Walk', fits: ['walk', 'steps', 'miles'], tracks: 'walk' },
-  { key: 'run', label: 'Run', fits: ['run', 'steps', 'miles'], tracks: 'run' },
-  { key: 'bike', label: 'Bike', fits: ['bike', 'miles'], tracks: 'bike' },
-  { key: 'class', label: 'Class', fits: ['class', 'custom'], tracks: 'class' },
-  { key: 'sport', label: 'Sport', fits: ['steps', 'miles', 'custom'], tracks: null },
-  { key: 'other', label: 'Other', fits: ['custom', 'steps', 'miles'], tracks: null },
+  { key: 'gym', label: 'Gym', fits: ['gym', 'minutes', 'custom'], tracks: 'gym' },
+  { key: 'walk', label: 'Walk', fits: ['walk', 'steps', 'miles', 'minutes'], tracks: 'walk' },
+  { key: 'run', label: 'Run', fits: ['run', 'steps', 'miles', 'minutes'], tracks: 'run' },
+  { key: 'bike', label: 'Bike', fits: ['bike', 'miles', 'minutes'], tracks: 'bike' },
+  { key: 'class', label: 'Class', fits: ['class', 'minutes', 'custom'], tracks: 'class' },
+  { key: 'sport', label: 'Sport', fits: ['steps', 'miles', 'minutes', 'custom'], tracks: null },
+  { key: 'other', label: 'Other', fits: ['custom', 'steps', 'miles', 'minutes'], tracks: null },
 ];
+
+// ---------- workouts ----------
+// The specific thing someone did, one level below the activity: a trail run rather than a run. Each is
+// measured the way that workout is actually measured, so a swim is logged in laps and a round of golf
+// in holes. The grouping follows the broad families the big fitness trackers use.
+
+export type Metric = 'mi' | 'min' | 'm' | 'laps' | 'reps' | 'rounds' | 'holes' | 'floors' | 'runs' | 'routes' | 'games';
+export const METRICS: Record<Metric, { ask: string; one: string; many: string; max: number; whole: boolean }> = {
+  mi: { ask: 'How far?', one: 'mi', many: 'mi', max: 300, whole: false },
+  min: { ask: 'How long?', one: 'min', many: 'min', max: 1440, whole: true },
+  m: { ask: 'How far?', one: 'm', many: 'm', max: 100000, whole: true },
+  laps: { ask: 'How many laps?', one: 'lap', many: 'laps', max: 1000, whole: true },
+  reps: { ask: 'How many reps in all?', one: 'rep', many: 'reps', max: 10000, whole: true },
+  rounds: { ask: 'How many rounds?', one: 'round', many: 'rounds', max: 200, whole: true },
+  holes: { ask: 'How many holes?', one: 'hole', many: 'holes', max: 72, whole: true },
+  floors: { ask: 'How many floors?', one: 'floor', many: 'floors', max: 2000, whole: true },
+  runs: { ask: 'How many runs?', one: 'run', many: 'runs', max: 200, whole: true },
+  routes: { ask: 'How many routes?', one: 'route', many: 'routes', max: 200, whole: true },
+  games: { ask: 'How many games?', one: 'game', many: 'games', max: 100, whole: true },
+};
+
+export type WorkoutKind = { key: string; label: string; emoji: string; activity: Activity; metric: Metric };
+const w = (key: string, label: string, emoji: string, activity: Activity, metric: Metric): WorkoutKind => ({ key, label, emoji, activity, metric });
+export const WORKOUTS: WorkoutKind[] = [
+  w('road_run', 'Road run', '🏃', 'run', 'mi'), w('trail_run', 'Trail run', '🌲', 'run', 'mi'),
+  w('treadmill_run', 'Treadmill run', '🏃‍♂️', 'run', 'mi'), w('track_run', 'Track run', '🏟️', 'run', 'laps'),
+  w('sprints', 'Sprints', '⚡️', 'run', 'rounds'), w('jog', 'Easy jog', '🙂', 'run', 'mi'),
+
+  w('walk', 'Walk', '🚶', 'walk', 'mi'), w('power_walk', 'Power walk', '🚶‍♀️', 'walk', 'mi'),
+  w('hike', 'Hike', '🥾', 'walk', 'mi'), w('dog_walk', 'Dog walk', '🐕', 'walk', 'mi'),
+  w('treadmill_walk', 'Treadmill walk', '👟', 'walk', 'mi'), w('stairs', 'Stair climb', '🪜', 'walk', 'floors'),
+  w('ruck', 'Ruck', '🎒', 'walk', 'mi'),
+
+  w('road_ride', 'Road ride', '🚴', 'bike', 'mi'), w('mountain_bike', 'Mountain bike', '🚵', 'bike', 'mi'),
+  w('indoor_ride', 'Indoor ride', '🚲', 'bike', 'mi'), w('commute_ride', 'Bike commute', '🏙️', 'bike', 'mi'),
+
+  w('weights', 'Weight training', '🏋️', 'gym', 'reps'), w('bodyweight', 'Bodyweight', '🤸', 'gym', 'reps'),
+  w('hiit', 'HIIT', '🔥', 'gym', 'rounds'), w('circuit', 'Circuit training', '🔁', 'gym', 'rounds'),
+  w('core', 'Core and abs', '🧱', 'gym', 'reps'), w('elliptical', 'Elliptical', '🌀', 'gym', 'min'),
+  w('stair_stepper', 'Stair stepper', '🪜', 'gym', 'floors'), w('rowing_machine', 'Rowing machine', '🚣', 'gym', 'm'),
+  w('jump_rope', 'Jump rope', '🪢', 'gym', 'min'), w('stretching', 'Stretching', '🙆', 'gym', 'min'),
+
+  w('yoga', 'Yoga', '🧘', 'class', 'min'), w('pilates', 'Pilates', '🤍', 'class', 'min'),
+  w('spin', 'Spin class', '🚲', 'class', 'min'), w('barre', 'Barre', '🩰', 'class', 'min'),
+  w('dance', 'Dance', '💃', 'class', 'min'), w('boxing_class', 'Boxing class', '🥊', 'class', 'rounds'),
+  w('bootcamp', 'Bootcamp', '🪖', 'class', 'min'), w('martial_arts', 'Martial arts', '🥋', 'class', 'min'),
+
+  w('basketball', 'Basketball', '🏀', 'sport', 'min'), w('soccer', 'Soccer', '⚽️', 'sport', 'min'),
+  w('football', 'Football', '🏈', 'sport', 'min'), w('tennis', 'Tennis', '🎾', 'sport', 'games'),
+  w('pickleball', 'Pickleball', '🏓', 'sport', 'games'), w('volleyball', 'Volleyball', '🏐', 'sport', 'games'),
+  w('golf', 'Golf', '⛳️', 'sport', 'holes'), w('baseball', 'Baseball or softball', '⚾️', 'sport', 'min'),
+  w('climbing', 'Climbing', '🧗', 'sport', 'routes'), w('sparring', 'Boxing', '🥊', 'sport', 'rounds'),
+
+  w('pool_swim', 'Pool swim', '🏊', 'other', 'laps'), w('open_swim', 'Open water swim', '🌊', 'other', 'm'),
+  w('paddle', 'Kayak or paddle', '🛶', 'other', 'mi'), w('surf', 'Surfing', '🏄', 'other', 'min'),
+  w('ski', 'Ski or snowboard', '⛷️', 'other', 'runs'), w('skate', 'Skating', '⛸️', 'other', 'min'),
+  w('yard_work', 'Yard work', '🌿', 'other', 'min'),
+];
+export const workoutKind = (key: unknown) => WORKOUTS.find((k) => k.key === key);
+export function metricText(metric: Metric, n: number): string {
+  return `${fmt(n)} ${n === 1 ? METRICS[metric].one : METRICS[metric].many}`;
+}
 
 export const LENGTHS = [
   { days: 7, label: '1 week' },
@@ -111,10 +177,12 @@ export function range(from: number, to: number, step = 1): number[] {
 export function targetOptions(type: ChallengeType, per: Per): number[] {
   if (type === 'steps') return range(2000, 20000, 500);
   if (type === 'miles') return range(1, 50);
+  if (type === 'minutes') return range(10, 600, 10);
   return per === 'day' ? [1] : range(1, 7);
 }
 
 export function logOptions(type: ChallengeType): number[] {
+  if (type === 'minutes') return range(5, 300, 5);
   return type === 'steps' ? range(500, 30000, 500) : range(0.5, 30, 0.5);
 }
 

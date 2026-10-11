@@ -7,7 +7,7 @@ import {
   applyFlairs,
   deleteChallenge, syncSteps, updateWorkout, workoutLog,
   acceptInvite, agreeConsequence, canView, challengeById, checkinFor, createChallenge, detailFor, endEarly,
-  friendFor, homeFor, houseFor, inviteByToken, inviteFor, invitePreview, isActive, join, logCheckin, meFor,
+  addCrew, friendFor, homeFor, houseFor, inviteByToken, inviteFor, invitePreview, isActive, join, logCheckin, meFor,
   meView, memberOf, proposeConsequence, renameLoser, requestRemoval, resetName, settle, signin, signup, undoCheckin, updateMe,
 } from './logic.ts';
 import { appSiteAssociation, invitePage, privacyPage } from './preview.ts';
@@ -72,6 +72,7 @@ challengeRoute('POST', '/consequence', ({ db, user, today, body }, ch) => propos
 challengeRoute('POST', '/consequence/agree', ({ db, user, today }, ch) => agreeConsequence(db, ch, user, today));
 challengeRoute('POST', '/rename', ({ db, user, today, body }, ch) => renameLoser(db, ch, user, today, body));
 challengeRoute('POST', '/removals', ({ db, user, today, body }, ch) => requestRemoval(db, ch, user, today, body));
+challengeRoute('POST', '/add', ({ db, user, today, body }, ch) => addCrew(db, ch, user, today, body));
 challengeRoute('POST', '/end', ({ db, user, today }, ch) => endEarly(db, ch, user, today));
 route('POST', '/api/challenges/:id/delete', ({ db, user, params }) => {
   deleteChallenge(db, challengeById(db, params.id), user);

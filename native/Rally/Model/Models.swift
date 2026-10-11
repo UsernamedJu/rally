@@ -97,6 +97,8 @@ struct ChallengeCard: Codable, Hashable, Identifiable {
     var daysLeftText: String
     var waiting: Bool
     var live: Bool
+    /** The friend who put you in this one, when you did not join it yourself. */
+    var addedBy: String?
 
     var kind: String { type ?? Catalog.guessType(from: targetShort) }
 }
@@ -149,11 +151,18 @@ struct Workout: Codable, Hashable, Identifiable {
     var dateText: String
     var activity: String
     var activityLabel: String
+    /** The specific workout, when one was picked: "Trail run", its emoji and "3.2 mi". */
+    var kind: String?
+    var kindEmoji: String?
+    var metricText: String?
     var minutes: Int?
     var note: String
     var exercises: [Exercise]
     var shared: Bool
     var countedToward: [String]
+
+    var title: String { kind ?? activityLabel }
+    var emoji: String { kindEmoji ?? Catalog.emoji(activity) }
 
     var hasDetail: Bool { minutes != nil || !note.isEmpty || !exercises.isEmpty }
 }
@@ -254,6 +263,8 @@ struct ChallengeDetail: Codable, Hashable, Identifiable {
     var alerts: [String]
     var you: YouInChallenge
     var manage: [ManagedPerson]
+    /** People in your crew who are not in this challenge yet. Missing from older servers. */
+    var addable: [Person]?
 }
 
 struct CheckinChallenge: Codable, Hashable, Identifiable {
@@ -266,10 +277,25 @@ struct CheckinChallenge: Codable, Hashable, Identifiable {
     var progressText: String
 }
 
+/** One specific workout from the server's catalog, and how it is measured. */
+struct WorkoutOption: Codable, Hashable, Identifiable {
+    var key: String
+    var label: String
+    var emoji: String
+    var activity: String
+    var unit: String
+    var ask: String
+    var whole: Bool
+    var max: Double
+    var id: String { key }
+}
+
 struct CheckinData: Codable {
     var checkedIn: Bool
     var streak: Int
     var challenges: [CheckinChallenge]
+    /** Missing from servers started before the catalog existed. */
+    var workouts: [WorkoutOption]?
 }
 
 struct CheckinResult: Codable {

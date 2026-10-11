@@ -24,6 +24,7 @@ nonisolated enum Catalog {
         "class": TypeInfo(label: "Classes", one: "class", many: "classes", numeric: false, defaultPer: "week", defaultTarget: 2, defaultName: "Class challenge", noun: "class", symbol: "figure.yoga"),
         "steps": TypeInfo(label: "Steps", one: "step", many: "steps", numeric: true, defaultPer: "day", defaultTarget: 8000, defaultName: "Steps challenge", noun: "steps", symbol: "shoeprints.fill"),
         "miles": TypeInfo(label: "Miles", one: "mile", many: "miles", numeric: true, defaultPer: "week", defaultTarget: 10, defaultName: "Miles challenge", noun: "miles", symbol: "point.topleft.down.to.point.bottomright.curvepath.fill"),
+        "minutes": TypeInfo(label: "Active minutes", one: "minute", many: "minutes", numeric: true, defaultPer: "week", defaultTarget: 150, defaultName: "Minutes challenge", noun: "minutes", symbol: "timer"),
         "custom": TypeInfo(label: "Your own", one: "session", many: "sessions", numeric: false, defaultPer: "week", defaultTarget: 3, defaultName: "Challenge", noun: "", symbol: "star.fill"),
     ]
 
@@ -33,7 +34,7 @@ nonisolated enum Catalog {
     // One emoji per kind of thing, so a card can be recognised before it is read.
 
     static let emoji: [String: String] = [
-        "gym": "🏋️", "walk": "🚶", "run": "🏃", "bike": "🚴", "class": "🧘", "steps": "👟", "miles": "🛣️", "custom": "⭐️",
+        "gym": "🏋️", "walk": "🚶", "run": "🏃", "bike": "🚴", "class": "🧘", "steps": "👟", "miles": "🛣️", "minutes": "⏱️", "custom": "⭐️",
         "sport": "⚽️", "other": "✨",
     ]
 
@@ -42,7 +43,7 @@ nonisolated enum Catalog {
     /** The type behind a line like "4 runs a week", for cards that arrive without one. */
     static func guessType(from text: String) -> String {
         let t = text.lowercased()
-        for (word, type) in [("gym", "gym"), ("walk", "walk"), ("run", "run"), ("bike", "bike"), ("class", "class"), ("step", "steps"), ("mile", "miles")] where t.contains(word) {
+        for (word, type) in [("gym", "gym"), ("walk", "walk"), ("run", "run"), ("bike", "bike"), ("class", "class"), ("step", "steps"), ("mile", "miles"), ("minute", "minutes")] where t.contains(word) {
             return type
         }
         return "custom"
@@ -51,6 +52,8 @@ nonisolated enum Catalog {
     static let bandEmoji = ["starting": "🌱", "active": "🙂", "very": "⚡️"]
 
     static let trackTypes = ["gym", "walk", "run", "bike", "class", "steps", "miles"]
+    /** What a challenge can be about: everything you can track, plus minutes of any workout. */
+    static let challengeTypes = trackTypes + ["minutes"]
 
     struct Band { let key: String; let label: String; let hint: String }
     static let bands = [
@@ -63,13 +66,13 @@ nonisolated enum Catalog {
 
     struct Activity { let key: String; let label: String; let symbol: String; let fits: [String] }
     static let activities = [
-        Activity(key: "gym", label: "Gym", symbol: "dumbbell.fill", fits: ["gym", "custom"]),
-        Activity(key: "walk", label: "Walk", symbol: "figure.walk", fits: ["walk", "steps", "miles"]),
-        Activity(key: "run", label: "Run", symbol: "figure.run", fits: ["run", "steps", "miles"]),
-        Activity(key: "bike", label: "Bike", symbol: "figure.outdoor.cycle", fits: ["bike", "miles"]),
-        Activity(key: "class", label: "Class", symbol: "figure.yoga", fits: ["class", "custom"]),
-        Activity(key: "sport", label: "Sport", symbol: "sportscourt.fill", fits: ["steps", "miles", "custom"]),
-        Activity(key: "other", label: "Other", symbol: "sparkles", fits: ["custom", "steps", "miles"]),
+        Activity(key: "gym", label: "Gym", symbol: "dumbbell.fill", fits: ["gym", "minutes", "custom"]),
+        Activity(key: "walk", label: "Walk", symbol: "figure.walk", fits: ["walk", "steps", "miles", "minutes"]),
+        Activity(key: "run", label: "Run", symbol: "figure.run", fits: ["run", "steps", "miles", "minutes"]),
+        Activity(key: "bike", label: "Bike", symbol: "figure.outdoor.cycle", fits: ["bike", "miles", "minutes"]),
+        Activity(key: "class", label: "Class", symbol: "figure.yoga", fits: ["class", "minutes", "custom"]),
+        Activity(key: "sport", label: "Sport", symbol: "sportscourt.fill", fits: ["steps", "miles", "minutes", "custom"]),
+        Activity(key: "other", label: "Other", symbol: "sparkles", fits: ["custom", "steps", "miles", "minutes"]),
     ]
 
     static let lengths: [(days: Int, label: String)] = [(7, "1 week"), (14, "2 weeks"), (28, "1 month")]
@@ -88,11 +91,13 @@ nonisolated enum Catalog {
     static func targetOptions(_ type: String, per: String) -> [Double] {
         if type == "steps" { return range(2000, 20000, 500) }
         if type == "miles" { return range(1, 50) }
+        if type == "minutes" { return range(10, 600, 10) }
         return per == "day" ? [1] : range(1, 7)
     }
 
     static func logOptions(_ type: String) -> [Double] {
-        type == "steps" ? range(500, 30000, 500) : range(0.5, 30, 0.5)
+        if type == "minutes" { return range(5, 300, 5) }
+        return type == "steps" ? range(500, 30000, 500) : range(0.5, 30, 0.5)
     }
 
     static func fmt(_ n: Double) -> String {

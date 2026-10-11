@@ -32,7 +32,7 @@ struct DebugDemo: View {
     }()
 
     var body: some View {
-        if Self.flag("RallyDemoLog") { log } else if Self.flag("RallyDemoWin") { win } else if Self.flag("RallyDemoFun") { fun } else { water }
+        if Self.flag("RallyDemoFlow") { flow } else if Self.flag("RallyDemoLog") { log } else if Self.flag("RallyDemoWin") { win } else if Self.flag("RallyDemoFun") { fun } else { water }
     }
 
     /**
@@ -73,6 +73,20 @@ struct DebugDemo: View {
         }
         """
         return try? JSONDecoder().decode(ChallengeDetail.self, from: Data(json.utf8))
+    }
+
+    /** `-RallyDemo YES -RallyDemoFlow YES`: the logging flow on made-up data, opened at "what did you do" with a trail run picked. */
+    private var flow: some View {
+        LogFlow(data: CheckinData(checkedIn: false, streak: 3, challenges: [
+            CheckinChallenge(id: "c1", name: "Miles challenge", type: "miles", numeric: true, unitMany: "miles", loggedToday: false, progressText: "2 of 10 miles this week"),
+            CheckinChallenge(id: "c2", name: "Minutes challenge", type: "minutes", numeric: true, unitMany: "minutes", loggedToday: false, progressText: "40 of 150 minutes this week"),
+        ], workouts: [
+            WorkoutOption(key: "road_run", label: "Road run", emoji: "🏃", activity: "run", unit: "mi", ask: "How far?", whole: false, max: 300),
+            WorkoutOption(key: "trail_run", label: "Trail run", emoji: "🌲", activity: "run", unit: "mi", ask: "How far?", whole: false, max: 300),
+            WorkoutOption(key: "treadmill_run", label: "Treadmill run", emoji: "🏃‍♂️", activity: "run", unit: "mi", ask: "How far?", whole: false, max: 300),
+            WorkoutOption(key: "track_run", label: "Track run", emoji: "🏟️", activity: "run", unit: "laps", ask: "How many laps?", whole: true, max: 1000),
+            WorkoutOption(key: "sprints", label: "Sprints", emoji: "⚡️", activity: "run", unit: "rounds", ask: "How many rounds?", whole: true, max: 200),
+        ]), preset: "c1", onFinish: {}, demo: true)
     }
 
     /** `-RallyDemo YES -RallyDemoLog YES`: the workout detail fields, a log row and the medals. */

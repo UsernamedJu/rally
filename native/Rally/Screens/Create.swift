@@ -28,6 +28,8 @@ struct CreateView: View {
     @State private var consequence = ""
     @State private var error: String?
     @State private var created: (id: String, token: String)?
+    @State private var crew: [Person] = []
+    @State private var crewPicked: [String] = []
 
     private let titles = ["What kind of challenge?", "How much and how long?", "Consequence for last place?", "Invite your crew."]
     private var kind: String { type ?? "custom" }
@@ -44,7 +46,7 @@ struct CreateView: View {
                 Group {
                     switch step {
                     case 0:
-                        ChipPicker(options: Catalog.trackTypes.map { ChipOption(id: $0, label: Catalog.info($0).label, emoji: Catalog.emoji($0)) }, selection: type) { pick($0) }
+                        ChipPicker(options: Catalog.challengeTypes.map { ChipOption(id: $0, label: Catalog.info($0).label, emoji: Catalog.emoji($0)) }, selection: type) { pick($0) }
                         RallyField(placeholder: "Or name your own", text: $name, maxLength: 40)
                     case 1:
                         WheelPicker(label: "Target", values: Catalog.targetOptions(kind, per: per), value: $target, format: Catalog.fmt)
@@ -61,7 +63,15 @@ struct CreateView: View {
                         ConsequencePicker(value: $consequence, context: "\(spec.name), \(Catalog.targetText(type: kind, target: target, per: per, lengthDays: lengthDays))", type: kind)
                         Text("Your crew votes on this once they're in. No money, nothing mean.").font(.footnote).foregroundStyle(Palette.stone)
                     default:
-                        InviteComposer(spec: spec, getToken: { try await create().token }, onFinish: { dismiss() }, onSkip: {
+                        if !crew.isEmpty {
+                            // People already in your crew go straight in: no link to send, nothing for them to tap.
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Add from your crew").font(.label)
+                                MultiChipPicker(options: crew.map { ChipOption(id: $0.id, label: $0.name, emoji: crewPicked.contains($0.id) ? "✅" : "👤") }, selection: $crewPicked)
+                            }
+                            Text("Or invite someone new").font(.label).padding(.top, 4)
+                        }
+                        InviteComposer(spec: spec, getToken: { try await create().token }, onFinish: { dismiss() }, skipTitle: crewPicked.isEmpty ? "Start without inviting yet" : crewPicked.count == 1 ? "Add them and start" : "Add all \(crewPicked.count) and start", onSkip: {
                             Task {
                                 do {
                                     _ = try await create()
@@ -90,6 +100,9 @@ struct CreateView: View {
                 }
             }
             .animation(Motion.wave, value: step)
+            .task {
+                if let home: HomeData = try? await api.send("/home") { crew = home.crew.map(\.person) }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if step > 0 { Button("Back", systemImage: "chevron.left") { go(step - 1) } }
@@ -135,6 +148,10 @@ struct CreateView: View {
         struct Created: Decodable { var id: String; var token: String }
         let r: Created = try await api.send("/challenges", body: body)
         created = (r.id, r.token)
+        if !crewPicked.isEmpty {
+            // The challenge exists either way; if adding fails they can still be added from its page.
+            let _: ChallengeDetail? = try? await api.send("/challenges/\(r.id)/add", body: ["userIds": crewPicked])
+        }
         return (r.id, r.token)
     }
 }
@@ -194,6 +211,7 @@ struct InviteComposer: View {
     var spec: InviteSpec
     var getToken: () async throws -> String
     var onFinish: () -> Void
+    var skipTitle = "Start without inviting yet"
     var onSkip: (() -> Void)? = nil
     @Environment(API.self) private var api
     @State private var tone = "friendly"
@@ -216,7 +234,7 @@ struct InviteComposer: View {
             PrimaryButton(title: "Send by text", symbol: "message.fill", busy: busy == "text", disabled: busy != nil) { send("text") }
             SecondaryButton(title: "Pick from contacts", symbol: "person.crop.circle", busy: busy == "contacts", disabled: busy != nil) { send("contacts") }
             TextButton(title: "Share another way") { if busy == nil { send("share") } }
-            if let onSkip { TextButton(title: "Start without inviting yet", action: onSkip) }
+            if let onSkip { TextButton(title: skipTitle, action: onSkip) }
         }
     }
 

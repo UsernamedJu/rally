@@ -125,6 +125,7 @@ struct HomeView: View {
             if DebugDemo.flag("RallyOpenFirst"), router.home.isEmpty, let first = d.challenges.first { router.show(challenge: first.id) }
             await Reminders.schedule(enabled: d.user.notifications, time: d.user.workoutTime, friend: d.crew.first?.name)
             await StepSync.shared.sync()
+            Nudges.addedToChallenges(d, router: router)
             await Nudges.afterHomeLoads(d, router: router)
         }
         .sheet(item: $friend) { FriendSheet(friend: $0) }

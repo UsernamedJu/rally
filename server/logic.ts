@@ -1,6 +1,6 @@
 import {
-  ACTIVITIES, REWARD_DAYS, STAKES, TIMES, TRACK_TYPES, TYPES, addDays, daysLeftText, diffDays, fairPlay, fmt, forfeitDays, isBand, longDate, mondayOf,
-  periodWord, personalTarget, rangeText, targetOptions, targetShort, targetText, unit,
+  ACTIVITIES, METRICS, REWARD_DAYS, STAKES, TIMES, TRACK_TYPES, TYPES, addDays, daysLeftText, diffDays, fairPlay, fmt, forfeitDays, isBand, longDate, mondayOf,
+  periodWord, personalTarget, rangeText, targetOptions, targetShort, targetText, unit, WORKOUTS, metricText, workoutKind,
 } from '../shared/catalog.ts';
 import type { Activity, Band, TrackType } from '../shared/catalog.ts';
 import { CODE_ALPHABET, RENAME_DAYS, cleanLastName, isRenameConsequence, offLimitsReason } from '../shared/copy.ts';
@@ -300,6 +300,7 @@ function cardFor(db: DB, ch: Challenge, m: Member, today: string): ChallengeCard
     daysLeftText: daysLeftText(diffDays(windowOf(ch, m).end, today)),
     waiting: status === 'waiting',
     live: status === 'live',
+    ...(m.addedBy ? { addedBy: userById(db, m.addedBy)?.name ?? 'A friend' } : {}),
   };
 }
 
@@ -458,8 +459,15 @@ function cleanDetail(raw: any): Omit<WorkoutDetail, 'id' | 'userId'> | null {
       };
     })
     .filter((e: { name: string }) => e.name);
-  const detail = { minutes: whole(raw.minutes, 1440), note: cleanText(raw.note, 280), exercises, shared: raw.shared === true };
-  return detail.minutes || detail.note || exercises.length || detail.shared ? detail : null;
+  const kind = workoutKind(raw.workout);
+  const n = kind ? Number(raw.amount) : NaN;
+  const info = kind ? METRICS[kind.metric] : null;
+  const amount = info && n > 0 && n <= info.max ? (info.whole ? Math.round(n) : Math.round(n * 100) / 100) : null;
+  let minutes = whole(raw.minutes, 1440);
+  // A workout measured in minutes says how long it took, so the two never disagree.
+  if (kind?.metric === 'min' && amount) minutes = amount;
+  const detail = { minutes, note: cleanText(raw.note, 280), exercises, shared: raw.shared === true, workout: kind?.key ?? null, amount };
+  return detail.minutes || detail.note || exercises.length || detail.shared || detail.workout ? detail : null;
 }
 
 /** Everything one person has logged, newest first: each check-in once, with its detail if it has any. */
@@ -479,6 +487,9 @@ function workoutsOf(db: DB, userId: string): Workout[] {
         dateText: longDate(first.date),
         activity: first.activity,
         activityLabel: ACTIVITIES.find((a) => a.key === first.activity)?.label ?? 'Workout',
+        kind: workoutKind(d?.workout)?.label ?? null,
+        kindEmoji: workoutKind(d?.workout)?.emoji ?? null,
+        metricText: d?.amount && workoutKind(d.workout) ? metricText(workoutKind(d.workout)!.metric, d.amount) : null,
         minutes: d?.minutes ?? null,
         note: d?.note ?? '',
         exercises: d?.exercises ?? [],
@@ -499,6 +510,9 @@ export const workoutLog = (db: DB, user: User): Workout[] => workoutsOf(db, user
 export function updateWorkout(db: DB, user: User, id: string, body: any): Workout {
   if (!db.logs.some((l) => l.checkinId === id && l.userId === user.id && !l.auto)) throw new HttpError(404, 'Workout not found.');
   const detail = cleanDetail(body) ?? { minutes: null, note: '', exercises: [], shared: false };
+  // Editing the details later does not ask which workout it was again, so that part is kept as it was.
+  const old = db.workouts.find((w) => w.id === id && w.userId === user.id);
+  if (body?.workout === undefined && old?.workout) Object.assign(detail, { workout: old.workout, amount: old.amount ?? null });
   db.workouts = db.workouts.filter((w) => !(w.id === id && w.userId === user.id));
   db.workouts.push({ id, userId: user.id, ...detail });
   return workoutsOf(db, user.id).find((w) => w.id === id)!;
@@ -547,6 +561,10 @@ export function checkinFor(db: DB, user: User, today: string): CheckinData {
         progressText: progressText(ch, p),
       };
     }),
+    workouts: WORKOUTS.map((k) => {
+      const m = METRICS[k.metric];
+      return { key: k.key, label: k.label, emoji: k.emoji, activity: k.activity, unit: m.many, ask: m.ask, whole: m.whole, max: m.max };
+    }),
   };
 }
 
@@ -558,6 +576,13 @@ export function logCheckin(db: DB, user: User, today: string, body: any): Checki
   const previous: Record<string, number> = {};
   const touched: { ch: Challenge; m: Member }[] = [];
   const entries: any[] = Array.isArray(body.entries) ? body.entries : [];
+  const detail = cleanDetail(body?.details);
+  const kind = workoutKind(detail?.workout);
+  // What the workout itself measured, for a challenge that counts the same thing and was sent no number.
+  const measured: Record<string, number | null | undefined> = {
+    miles: kind?.metric === 'mi' ? detail?.amount : null,
+    minutes: detail?.minutes,
+  };
   for (const entry of entries) {
     const ch = db.challenges.find((c) => c.id === entry?.challengeId);
     const m = ch && memberOf(db, ch, user.id);
@@ -565,7 +590,7 @@ export function logCheckin(db: DB, user: User, today: string, body: any): Checki
     const numeric = TYPES[ch.type].numeric;
     const before = progressOf(db, ch, m, today);
     if (!numeric && before.loggedToday) continue; // one log a day for session challenges
-    const amount = numeric ? Number(entry.amount) : 1;
+    const amount = numeric ? Number(entry.amount) || Number(measured[ch.type]) : 1;
     if (!(amount > 0 && amount <= 100000)) continue;
     previous[ch.id] = Math.min(1, before.current / before.target);
     db.logs.push({ id: newId(), checkinId, userId: user.id, challengeId: ch.id, date: today, activity, type: ch.type, amount, createdAt });
@@ -575,7 +600,6 @@ export function logCheckin(db: DB, user: User, today: string, body: any): Checki
     if (entries.length) throw new HttpError(409, 'Already logged today.');
     db.logs.push({ id: newId(), checkinId, userId: user.id, challengeId: null, date: today, activity, type: null, amount: 1, createdAt });
   }
-  const detail = cleanDetail(body?.details);
   if (detail) db.workouts.push({ id: checkinId, userId: user.id, ...detail });
   const cards = touched.map(({ ch, m }) => cardFor(db, ch, m, today));
   const streak = streaks(db, user.id, today).current;
@@ -732,6 +756,13 @@ export function detailFor(db: DB, ch: Challenge, viewer: User | null, today: str
       loggedToday: !!mine && active && !TYPES[ch.type].numeric && progressOf(db, ch, mine, today).loggedToday,
       medal: mine ? medalFor(db, ch, mine, today) : null,
     },
+    addable: mine && active && ch.status !== 'done' && !ch.houseChallenge
+      ? db.crew
+        .filter((c) => c.userId === viewer!.id && !rows.some((r) => r.u.id === c.friendUserId))
+        .map((c) => userById(db, c.friendUserId))
+        .filter((u): u is User => !!u)
+        .map(person)
+      : [],
     manage: commissioner
       ? rows
         .filter((r) => r.u.id !== viewer?.id)
@@ -826,6 +857,28 @@ export function join(db: DB, ch: Challenge, user: User, today: string): void {
   const c = db.consequences.find((x) => x.challengeId === ch.id);
   if (c?.text && !c.agreedBy.includes(user.id)) c.agreedBy.push(user.id);
   if (!ch.houseChallenge && roster(db, ch).length >= 2) ch.status = 'live';
+  syncConsequence(db, ch);
+}
+
+/**
+ * Puts people from your crew straight into a challenge you are in. They are in from today, exactly as
+ * if they had tapped an invite, with one difference: nobody agreed to a consequence on their behalf.
+ */
+export function addCrew(db: DB, ch: Challenge, user: User, today: string, body: any): void {
+  requireMember(db, ch, user, today);
+  if (ch.houseChallenge) throw new HttpError(403, 'Anyone can join this one themselves.');
+  if (ch.status === 'done') throw new HttpError(409, 'This challenge has ended.');
+  const ids: string[] = (Array.isArray(body?.userIds) ? body.userIds : []).map(String).slice(0, 50);
+  let added = 0;
+  for (const id of new Set(ids)) {
+    const friend = userById(db, id);
+    if (!friend || !db.crew.some((c) => c.userId === user.id && c.friendUserId === id)) continue;
+    if (isActive(ch, memberOf(db, ch, id), today)) continue;
+    db.members.push({ challengeId: ch.id, userId: id, joinedAt: nowIso(), joinedDate: today, removedAt: null, result: null, addedBy: user.id });
+    added++;
+  }
+  if (!added) throw new HttpError(400, 'Pick someone from your crew.');
+  if (roster(db, ch).length >= 2) ch.status = 'live';
   syncConsequence(db, ch);
 }
 
