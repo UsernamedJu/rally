@@ -208,6 +208,8 @@ struct WaterBackdrop: View {
 
 private struct SettleModifier: ViewModifier {
     var index: Int
+    /** Off for anything the shader layer cannot draw: scroll views and RealityKit come out blank or as a warning sign. */
+    var ripples = true
     @State private var shown = false
     @State private var settling = false
     @State private var start = Date.now
@@ -217,13 +219,19 @@ private struct SettleModifier: ViewModifier {
         // One structure for the whole life of the view. Swapping between a plain branch and a rippling
         // branch would make SwiftUI rebuild everything inside each time, and every entrance animation in
         // there would play twice. The timeline is simply paused when nothing is moving.
-        TimelineView(.animation(minimumInterval: 1 / 60, paused: !settling || reduce)) { timeline in
-            let t = timeline.date.timeIntervalSince(start)
-            content.visualEffect { [settling, reduce] view, proxy in
-                view.distortionEffect(
-                    ShaderLibrary.settle(.float2(proxy.size), .float(t), .float(2.2)),
-                    maxSampleOffset: CGSize(width: 3, height: 2),
-                    isEnabled: settling && !reduce)
+        Group {
+            if ripples {
+                TimelineView(.animation(minimumInterval: 1 / 60, paused: !settling || reduce)) { timeline in
+                    let t = timeline.date.timeIntervalSince(start)
+                    content.visualEffect { [settling, reduce] view, proxy in
+                        view.distortionEffect(
+                            ShaderLibrary.settle(.float2(proxy.size), .float(t), .float(2.2)),
+                            maxSampleOffset: CGSize(width: 3, height: 2),
+                            isEnabled: settling && !reduce)
+                    }
+                }
+            } else {
+                content
             }
         }
         .opacity(shown ? 1 : 0)
@@ -246,6 +254,9 @@ private struct SettleModifier: ViewModifier {
 extension View {
     /** Flows in like a drop landing: fades up out of a blur, then the surface settles. Staggered by `index`. */
     func settles(_ index: Int = 0) -> some View { modifier(SettleModifier(index: index)) }
+
+    /** The same entrance without the ripple, for scroll views and RealityKit, which the ripple's layer cannot draw. */
+    func flowsIn(_ index: Int = 0) -> some View { modifier(SettleModifier(index: index, ripples: false)) }
 }
 
 extension AnyTransition {

@@ -61,7 +61,7 @@ struct HomeView: View {
                     .padding(.horizontal, Metrics.screen)
                 }
                 .padding(.horizontal, -Metrics.screen)
-                .settles(1)
+                .flowsIn(1)
 
                 if DebugDemo.flag("RallyJoinFirst") { JoinSection(tracked: data.user.trackedTypes) }
 

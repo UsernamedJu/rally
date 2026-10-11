@@ -116,7 +116,7 @@ struct ChallengeContent<Footer: View>: View {
                         Text(result).font(.label)
                     }
                 }
-                // No settle effect here: a RealityKit view inside that shader layer draws as a yellow "not allowed" sign.
+                .flowsIn(1)
             }
 
             if let recap {

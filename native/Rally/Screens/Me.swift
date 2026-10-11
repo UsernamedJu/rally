@@ -55,7 +55,7 @@ struct MeView: View {
                 .settles(2)
 
                 if let achievements = data.achievements {
-                    AchievementGrid(achievements: achievements)
+                    AchievementGrid(achievements: achievements).flowsIn(2)
                 }
 
                 VStack(alignment: .leading, spacing: Metrics.gap) {
@@ -103,7 +103,7 @@ struct MeView: View {
                         .padding(.horizontal, -Metrics.screen)
                     }
                 }
-                .settles(3)
+                .flowsIn(3)
 
                 Button { router.me.append(.workouts) } label: {
                     HStack(spacing: Metrics.gap) {
@@ -213,8 +213,6 @@ private struct AchievementGrid: View {
                 Spacer()
                 Text("\(earned) of \(achievements.count)").font(.label).foregroundStyle(Palette.stone)
             }
-            .settles(2)
-            // The row itself stays out of the settle effect: a scroll view inside that layer draws nothing.
             // One row to swipe through. Tap a medal for what it takes and how far along you are.
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 6) {
