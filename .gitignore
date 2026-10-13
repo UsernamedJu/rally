@@ -46,6 +46,7 @@ yarn-error.*
 # SwiftUI app build output
 /native/build
 /native/build-device
+/native/build-local
 xcuserdata/
 *.xcuserstate
 /native/*.xcarchive

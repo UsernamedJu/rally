@@ -7,7 +7,7 @@ import {
   applyFlairs,
   deleteChallenge, syncSteps, updateWorkout, workoutLog,
   acceptInvite, agreeConsequence, canView, challengeById, checkinFor, createChallenge, detailFor, endEarly,
-  addCrew, friendFor, homeFor, houseFor, inviteByToken, inviteFor, invitePreview, isActive, join, logCheckin, meFor,
+  addCrew, friendFor, postTalk, setShared, homeFor, houseFor, inviteByToken, inviteFor, invitePreview, isActive, join, logCheckin, meFor,
   meView, memberOf, proposeConsequence, renameLoser, requestRemoval, resetName, settle, signin, signup, undoCheckin, updateMe,
 } from './logic.ts';
 import { appSiteAssociation, invitePage, privacyPage } from './preview.ts';
@@ -58,20 +58,23 @@ route('POST', '/api/challenges/:id/invite', ({ db, user, today, params }) => {
 function challengeRoute(method: string, suffix: string, act?: (ctx: Ctx, ch: Challenge) => void) {
   route(method, `/api/challenges/:id${suffix}`, (ctx) => {
     const ch = challengeById(ctx.db, ctx.params.id);
-    if (!canView(ctx.db, ch, ctx.user)) throw new HttpError(404, 'Challenge not found.');
+    if (!canView(ctx.db, ch, ctx.user, ctx.today)) throw new HttpError(404, 'Challenge not found.');
     act?.(ctx, ch);
     return detailFor(ctx.db, ch, ctx.user, ctx.today);
   });
 }
 challengeRoute('GET', '');
 challengeRoute('POST', '/join', ({ db, user, today }, ch) => {
-  if (!ch.houseChallenge) throw new HttpError(403, 'Join this one from an invite link.');
+  // Reaching this far means it is an open challenge, or a shared one a friend of theirs is in.
+  if (!ch.houseChallenge && !ch.shared) throw new HttpError(403, 'Join this one from an invite link.');
   join(db, ch, user, today);
 });
 challengeRoute('POST', '/consequence', ({ db, user, today, body }, ch) => proposeConsequence(db, ch, user, today, body));
 challengeRoute('POST', '/consequence/agree', ({ db, user, today }, ch) => agreeConsequence(db, ch, user, today));
 challengeRoute('POST', '/rename', ({ db, user, today, body }, ch) => renameLoser(db, ch, user, today, body));
 challengeRoute('POST', '/removals', ({ db, user, today, body }, ch) => requestRemoval(db, ch, user, today, body));
+challengeRoute('POST', '/talk', ({ db, user, today, body }, ch) => postTalk(db, ch, user, today, body));
+challengeRoute('POST', '/share', ({ db, user, body }, ch) => setShared(db, ch, user, body));
 challengeRoute('POST', '/add', ({ db, user, today, body }, ch) => addCrew(db, ch, user, today, body));
 challengeRoute('POST', '/end', ({ db, user, today }, ch) => endEarly(db, ch, user, today));
 route('POST', '/api/challenges/:id/delete', ({ db, user, params }) => {

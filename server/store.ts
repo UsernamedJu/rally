@@ -42,7 +42,11 @@ export type Challenge = {
   status: 'waiting' | 'live' | 'done';
   houseChallenge: boolean;
   createdAt: string;
+  /** The crew of anyone in it can see it and join. Off unless whoever started it said so. */
+  shared?: boolean;
 };
+/** One line of talk inside a challenge. */
+export type Message = { id: string; challengeId: string; userId: string; text: string; createdAt: string };
 export type Member = {
   challengeId: string;
   userId: string;
@@ -109,6 +113,7 @@ export type Removal = {
 export type DB = {
   users: User[];
   crew: Crew[];
+  messages: Message[];
   challenges: Challenge[];
   members: Member[];
   logs: Log[];
@@ -172,7 +177,7 @@ const HOUSE: Pick<Challenge, 'id' | 'name' | 'type' | 'target' | 'per' | 'length
 // The file is small enough to read on every request, which also lets the seed script
 // edit it while the server is running.
 export function load(): DB {
-  const db: DB = { users: [], crew: [], challenges: [], members: [], logs: [], consequences: [], invites: [], removals: [], renames: [], workouts: [], flairs: [] };
+  const db: DB = { users: [], crew: [], challenges: [], members: [], logs: [], consequences: [], invites: [], removals: [], renames: [], workouts: [], flairs: [], messages: [] };
   if (existsSync(DATA_FILE)) Object.assign(db, JSON.parse(readFileSync(DATA_FILE, 'utf8')));
   for (const u of db.users) {
     if (!isBand(u.band)) u.band = 'active';

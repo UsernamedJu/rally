@@ -1,5 +1,5 @@
 import {
-  ACTIVITIES, METRICS, REWARD_DAYS, STAKES, TIMES, TRACK_TYPES, TYPES, addDays, daysLeftText, diffDays, fairPlay, fmt, forfeitDays, isBand, longDate, mondayOf,
+  ACTIVITIES, METRICS, REWARD_DAYS, WEEKDAYS, shortDate, STAKES, TIMES, TRACK_TYPES, TYPES, addDays, daysLeftText, diffDays, fairPlay, fmt, forfeitDays, isBand, longDate, mondayOf,
   periodWord, personalTarget, rangeText, targetOptions, targetShort, targetText, unit, WORKOUTS, metricText, workoutKind,
 } from '../shared/catalog.ts';
 import type { Activity, Band, TrackType } from '../shared/catalog.ts';
@@ -310,7 +310,182 @@ export function homeFor(db: DB, user: User, today: string): HomeData {
     .map((c) => userById(db, c.friendUserId))
     .filter((u): u is User => !!u)
     .map((f) => ({ ...person(f), loggedToday: db.logs.some((l) => l.userId === f.id && l.date === today) }));
-  return { user: meView(user), crew, challenges: activeFor(db, user, today).map(({ ch, m }) => cardFor(db, ch, m, today)) };
+  return {
+    user: meView(user), crew, challenges: activeFor(db, user, today).map(({ ch, m }) => cardFor(db, ch, m, today)),
+    suggested: suggestionsFor(db, user, today),
+  };
+}
+
+const crewIds = (db: DB, userId: string) => db.crew.filter((c) => c.userId === userId).map((c) => c.friendUserId);
+
+/** Whether someone outside a challenge may see and join it: open ones always, shared ones through a friend who is in. */
+function reachable(db: DB, ch: Challenge, user: User, today: string): boolean {
+  if (ch.houseChallenge) return true;
+  if (!ch.shared || ch.status === 'done') return false;
+  const friends = crewIds(db, user.id);
+  return roster(db, ch).some((m) => friends.includes(m.userId) && isActive(ch, m, today));
+}
+
+/**
+ * Challenges worth offering: only ones somebody in your crew is already in. Nothing is recommended to
+ * someone whose friends are not in anything, so the first thing a newcomer sees is never a stranger's list.
+ */
+function suggestionsFor(db: DB, user: User, today: string): Suggestion[] {
+  const friends = crewIds(db, user.id);
+  if (!friends.length) return [];
+  return db.challenges
+    .filter((ch) => ch.status !== 'done' && today < ch.endAt && (ch.houseChallenge || ch.shared) && !isActive(ch, memberOf(db, ch, user.id), today))
+    .map((ch) => {
+      const inIt = roster(db, ch).filter((m) => isActive(ch, m, today));
+      const mine = inIt.filter((m) => friends.includes(m.userId)).map((m) => userById(db, m.userId)).filter((u): u is User => !!u);
+      return { id: ch.id, name: ch.name, type: ch.type, targetText: targetText(ch), friends: mine.map(person), memberCount: inIt.length };
+    })
+    .filter((s) => s.friends.length)
+    .sort((a, b) => b.friends.length - a.friends.length)
+    .slice(0, 5);
+}
+
+// ---------- per-person facts, the timeline, and talk ----------
+
+/** Each day's amount for one person in one challenge, keyed by date. Sessions count as 1. */
+function dailyOf(db: DB, ch: Challenge, userId: string): Map<string, number> {
+  const days = new Map<string, number>();
+  for (const l of db.logs) {
+    if (l.challengeId !== ch.id || l.userId !== userId) continue;
+    days.set(l.date, (days.get(l.date) ?? 0) + l.amount);
+  }
+  return days;
+}
+
+/**
+ * One true, specific thing about how someone is going. There are usually several to choose from, and
+ * which one shows moves on each day, so the standings read differently as the challenge goes.
+ */
+function factFor(db: DB, ch: Challenge, m: Member, today: string, isYou: boolean): string | null {
+  const numeric = TYPES[ch.type].numeric;
+  const days = dailyOf(db, ch, m.userId);
+  const { start } = windowOf(ch, m);
+  const who = isYou ? 'You' : (userById(db, m.userId)?.name.split(' ')[0] ?? 'They');
+  const have = isYou ? 'have' : 'has';
+  const facts: string[] = [];
+
+  // A run of days in a row, counted back from today (or yesterday, if today is still open).
+  let run = 0;
+  for (let d = days.has(today) ? today : addDays(today, -1); days.has(d); d = addDays(d, -1)) run++;
+  if (run >= 2) facts.push(`${run} days in a row`);
+
+  const logged = [...days.entries()].filter(([d]) => d >= start && d <= today);
+  const since = diffDays(today, start) + 1;
+  if (since >= 3 && logged.length === since) facts.push(`${who} ${have}n't missed a day yet`);
+
+  if (numeric && logged.length) {
+    const [bestDay, best] = logged.reduce((a, b) => (b[1] > a[1] ? b : a));
+    facts.push(`Best day: ${fmt(best)} ${unit(ch.type, best)} on ${bestDay === today ? 'today' : WEEKDAYS[new Date(bestDay + 'T00:00:00Z').getUTCDay()]}`);
+    const t = days.get(today) ?? 0, y = days.get(addDays(today, -1)) ?? 0;
+    if (t > 0 && y > 0 && t !== y) facts.push(`${t > y ? 'Up' : 'Down'} ${fmt(Math.abs(t - y))} ${unit(ch.type, Math.abs(t - y))} on yesterday`);
+    if (logged.length >= 3) {
+      const avg = logged.reduce((sum, [, v]) => sum + v, 0) / logged.length;
+      facts.push(`Averaging ${fmt(ch.type === 'steps' ? Math.round(avg / 100) * 100 : avg)} ${unit(ch.type, avg)} a day`);
+    }
+  }
+
+  // Across everything they have logged, not just this challenge.
+  const all = db.logs.filter((l) => l.userId === m.userId && !l.auto);
+  const allDays = [...new Set(all.map((l) => l.date))];
+  if (allDays.length >= 4) {
+    const byWeekday = new Array<number>(7).fill(0);
+    for (const d of allDays) byWeekday[new Date(d + 'T00:00:00Z').getUTCDay()]++;
+    const top = byWeekday.indexOf(Math.max(...byWeekday));
+    if (byWeekday[top] >= 2 && byWeekday.filter((n) => n === byWeekday[top]).length === 1) facts.push(`Shows up most on ${WEEKDAYS[top]}s`);
+    const weekend = byWeekday[0] + byWeekday[6];
+    if (weekend / allDays.length >= 0.6) facts.push('A weekend warrior');
+  }
+  // What they do most, from workouts they chose to share (or any of your own).
+  const kinds = new Map<string, number>();
+  for (const w of db.workouts) {
+    if (w.userId !== m.userId || !w.workout || !(isYou || w.shared)) continue;
+    kinds.set(w.workout, (kinds.get(w.workout) ?? 0) + 1);
+  }
+  const fav = [...kinds.entries()].sort((a, b) => b[1] - a[1])[0];
+  if (fav && fav[1] >= 2) facts.push(`Go-to workout: ${workoutKind(fav[0])?.label.toLowerCase()}`);
+
+  const firstToday = db.logs.filter((l) => l.challengeId === ch.id && l.date === today).sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+  if (firstToday?.userId === m.userId && roster(db, ch).length >= 2) facts.push('First one in today');
+
+  const last = logged.map(([d]) => d).sort().pop();
+  if (!facts.length) {
+    if (!last) return since >= 2 ? 'Yet to get on the board' : null;
+    const quiet = diffDays(today, last);
+    return quiet >= 2 ? `Quiet for ${quiet} days` : null;
+  }
+  let seed = diffDays(today, start);
+  for (const c of m.userId) seed += c.charCodeAt(0);
+  return facts[seed % facts.length];
+}
+
+/** Your own days in the challenge so far, with how today compares. */
+function timelineFor(db: DB, ch: Challenge, m: Member, today: string): Timeline {
+  const numeric = TYPES[ch.type].numeric;
+  const days = dailyOf(db, ch, m.userId);
+  const { start, end } = windowOf(ch, m);
+  const target = targetFor(db, ch, m.userId);
+  const out: Timeline['days'] = [];
+  for (let d = start; d < end; d = addDays(d, 1)) {
+    out.push({ date: d, label: WEEKDAYS[new Date(d + 'T00:00:00Z').getUTCDay()][0], amount: d > today ? 0 : days.get(d) ?? 0, today: d === today, future: d > today });
+  }
+  const past = out.filter((d) => !d.future);
+  const t = days.get(today) ?? 0, y = days.get(addDays(today, -1)) ?? 0;
+  let trend: Timeline['trend'] = null;
+  let trendText: string | null = null;
+  if (numeric && past.length >= 2) {
+    trend = t > y ? 'up' : t < y ? 'down' : 'flat';
+    trendText = t === y ? 'Same as yesterday' : `${fmt(Math.abs(t - y))} ${unit(ch.type, Math.abs(t - y))} ${t > y ? 'more' : 'fewer'} than yesterday`;
+  } else if (!numeric && past.length >= 2) {
+    const week = past.slice(-7).filter((d) => d.amount > 0).length;
+    const before = past.slice(-14, -7).filter((d) => d.amount > 0).length;
+    trend = past.length > 7 ? (week > before ? 'up' : week < before ? 'down' : 'flat') : null;
+    trendText = `${week} of the last ${Math.min(7, past.length)} days`;
+  }
+  const best = past.reduce((a, b) => (b.amount > a.amount ? b : a), past[0]);
+  return {
+    unit: TYPES[ch.type].many,
+    pace: !numeric ? null : ch.per === 'day' ? target : ch.per === 'week' ? Math.round((target / 7) * 10) / 10 : Math.round((target / ch.lengthDays) * 10) / 10,
+    days: out,
+    trend,
+    trendText,
+    bestText: numeric && best && best.amount > 0 ? `Best: ${fmt(best.amount)} on ${shortDate(best.date)}` : null,
+    goalText: targetShort({ ...ch, target }),
+  };
+}
+
+function talkFor(db: DB, ch: Challenge, viewerId: string | undefined, today: string): TalkLine[] {
+  return db.messages
+    .filter((x) => x.challengeId === ch.id)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .slice(-40)
+    .flatMap((x) => {
+      const u = userById(db, x.userId);
+      if (!u) return [];
+      const day = x.createdAt.slice(0, 10);
+      return [{ ...person(u), lineId: x.id, text: x.text, mine: u.id === viewerId, when: day === today ? 'Today' : shortDate(day) }];
+    });
+}
+
+/** Say something to everyone in a challenge. Only for people in it. */
+export function postTalk(db: DB, ch: Challenge, user: User, today: string, body: any): void {
+  requireMember(db, ch, user, today);
+  const text = cleanText(body?.text, 160);
+  if (!text) throw new HttpError(400, 'Say something first.');
+  db.messages.push({ id: newId(), challengeId: ch.id, userId: user.id, text, createdAt: nowIso() });
+  // Kept short: it is banter, not an archive.
+  const mine = db.messages.filter((x) => x.challengeId === ch.id);
+  if (mine.length > 200) db.messages = db.messages.filter((x) => x.challengeId !== ch.id || mine.indexOf(x) >= mine.length - 200);
+}
+
+/** Whoever started a challenge decides whether their friends' crews can see and join it. */
+export function setShared(db: DB, ch: Challenge, user: User, body: any): void {
+  if (ch.houseChallenge || ch.creatorId !== user.id) throw new HttpError(403, 'Only the person who started this can do that.');
+  ch.shared = body?.shared === true;
 }
 
 export function friendFor(db: DB, viewer: User, friendId: string): FriendData {
@@ -719,6 +894,7 @@ export function detailFor(db: DB, ch: Challenge, viewer: User | null, today: str
       isYou: r.u.id === viewer?.id,
       onTheHook: hookShown && !r.p.complete && share(r.p) === lowest,
       complete: r.p.complete,
+      fact: finished ? null : factFor(db, ch, r.m, today, r.u.id === viewer?.id),
     };
   });
   const consequence = ch.houseChallenge ? null : consequenceView(db, ch, rows.map((r) => r.u.id), viewer?.id);
@@ -763,6 +939,9 @@ export function detailFor(db: DB, ch: Challenge, viewer: User | null, today: str
         .filter((u): u is User => !!u)
         .map(person)
       : [],
+    talk: talkFor(db, ch, viewer?.id, today),
+    timeline: mine && active && !finished ? timelineFor(db, ch, mine, today) : null,
+    shared: !!ch.shared,
     manage: commissioner
       ? rows
         .filter((r) => r.u.id !== viewer?.id)
@@ -829,8 +1008,8 @@ export function resetName(db: DB, user: User): Me {
   return meView(user);
 }
 
-export function canView(db: DB, ch: Challenge, user: User): boolean {
-  return ch.houseChallenge || db.members.some((m) => m.challengeId === ch.id && m.userId === user.id);
+export function canView(db: DB, ch: Challenge, user: User, today: string): boolean {
+  return db.members.some((m) => m.challengeId === ch.id && m.userId === user.id) || reachable(db, ch, user, today);
 }
 
 export function houseFor(db: DB, user: User, today: string): HouseCard[] {
@@ -1033,7 +1212,7 @@ export function createChallenge(db: DB, user: User, today: string, body: any): {
   const ch: Challenge = {
     id: newId(), creatorId: user.id, name: customName || TYPES[type as keyof typeof TYPES].defaultName,
     type, target, per, lengthDays, startAt: today, endAt: addDays(today, lengthDays),
-    status: 'waiting', houseChallenge: false, createdAt: nowIso(),
+    status: 'waiting', houseChallenge: false, createdAt: nowIso(), shared: body.shared === true,
   };
   db.challenges.push(ch);
   db.members.push({ challengeId: ch.id, userId: user.id, joinedAt: nowIso(), joinedDate: today, removedAt: null, result: null });
@@ -1104,6 +1283,7 @@ export function deleteChallenge(db: DB, ch: Challenge, user: User): void {
   db.removals = db.removals.filter((x) => !gone(x));
   db.renames = db.renames.filter((x) => !gone(x));
   db.flairs = db.flairs.filter((x) => !gone(x));
+  db.messages = db.messages.filter((x) => !gone(x));
   // A person's own logs stay as plain workouts; step counts written by syncing only existed for the challenge.
   db.logs = db.logs.filter((l) => !(gone(l) && l.auto));
   for (const log of db.logs) if (gone(log)) log.challengeId = null;

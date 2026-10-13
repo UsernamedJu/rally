@@ -63,7 +63,7 @@ struct HomeView: View {
                 .padding(.horizontal, -Metrics.screen)
                 .flowsIn(1)
 
-                if DebugDemo.flag("RallyJoinFirst") { JoinSection(tracked: data.user.trackedTypes) }
+                if DebugDemo.flag("RallyJoinFirst") { JoinSection(suggested: data.suggested ?? []) }
 
                 HStack(alignment: .top, spacing: Metrics.gap) {
                     Text("💪").font(.title2).bobbing().accessibilityHidden(true)
@@ -104,7 +104,7 @@ struct HomeView: View {
                     }
                 }
 
-                JoinSection(tracked: data.user.trackedTypes).settles(5 + data.challenges.count)
+                JoinSection(suggested: data.suggested ?? []).settles(5 + data.challenges.count)
 
             } else {
                 Waiting(error: remote.error, heights: [34, 56, 110, 110]) { Task { await remote.load() } }
@@ -126,6 +126,7 @@ struct HomeView: View {
             await Reminders.schedule(enabled: d.user.notifications, time: d.user.workoutTime, friend: d.crew.first?.name)
             await StepSync.shared.sync()
             Nudges.addedToChallenges(d, router: router)
+            Nudges.crewJoined(d, router: router)
             await Nudges.afterHomeLoads(d, router: router)
         }
         .sheet(item: $friend) { FriendSheet(friend: $0) }
@@ -157,52 +158,37 @@ struct HomeView: View {
  * person tracks first, and a way in for someone holding an invite.
  */
 struct JoinSection: View {
-    var tracked: [String]
+    /** Challenges someone in your crew is already in. Nothing is offered until a friend is in something. */
+    var suggested: [Suggestion]
     @Environment(API.self) private var api
     @Environment(Router.self) private var router
-    @State private var remote = Remote<[HouseCard]>("/house")
     @State private var busy: String?
     @State private var error: String?
     @State private var inviteOpen = false
 
-    /** Not yet joined; what you track first, then the busiest. */
-    private var picks: [HouseCard] {
-        (remote.data ?? [])
-            .filter { !$0.joined }
-            .sorted { a, b in
-                let ta = tracked.contains(a.kind), tb = tracked.contains(b.kind)
-                return ta != tb ? ta : a.memberCount > b.memberCount
-            }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: Metrics.gap) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Join a challenge").font(.heading)
-                Spacer()
-                if picks.count > 3 {
-                    Button("See all") { router.home.append(.join) }.font(.label)
-                }
-            }
-            if !picks.isEmpty {
-                Text("Recommended for you").font(.label).foregroundStyle(Palette.stone)
-            }
-            ErrorLine(text: error)
-            ForEach(picks.prefix(3)) { h in
-                HStack(spacing: Metrics.gap) {
-                    EmojiBadge(emoji: Catalog.emoji(h.kind))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(h.name).font(.headline)
-                        Text(h.targetText).font(.subheadline).foregroundStyle(Palette.stone)
-                        Text(h.memberCount == 0 ? "Be the first one in" : h.memberCount == 1 ? "👤 1 person in" : "👥 \(h.memberCount) people in")
-                            .font(.footnote).foregroundStyle(Palette.stone)
+            if !suggested.isEmpty {
+                Text("Your crew is in").font(.heading)
+                ErrorLine(text: error)
+                ForEach(suggested) { s in
+                    HStack(spacing: Metrics.gap) {
+                        EmojiBadge(emoji: Catalog.emoji(s.type))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(s.name).font(.headline)
+                            Text(s.targetText).font(.subheadline).foregroundStyle(Palette.stone)
+                            HStack(spacing: 6) {
+                                AvatarStack(people: Array(s.friends.prefix(3)), total: s.friends.count, size: 22)
+                                Text(s.whoText).font(.footnote.weight(.medium))
+                            }
+                        }
+                        Spacer(minLength: 0)
+                        SecondaryButton(title: "Join", busy: busy == s.id, compact: true) { Task { await join(s) } }
                     }
-                    Spacer(minLength: 0)
-                    SecondaryButton(title: "Join", busy: busy == h.id, compact: true) { Task { await join(h) } }
+                    .padding(Metrics.card - 4)
+                    .background(Palette.card, in: .rect(cornerRadius: Metrics.radius))
+                    .scrollLively()
                 }
-                .padding(Metrics.card - 4)
-                .background(Palette.card, in: .rect(cornerRadius: Metrics.radius))
-                .scrollLively()
             }
             Button { inviteOpen = true } label: {
                 HStack(spacing: Metrics.gap) {
@@ -220,18 +206,19 @@ struct JoinSection: View {
                 .background(Palette.signalTint, in: .rect(cornerRadius: Metrics.radius))
             }
             .buttonStyle(WaterButtonStyle())
+            // The open challenges are still there for anyone who goes looking; they are just not pushed.
+            TextButton(title: "Browse open challenges") { router.home.append(.join) }
         }
-        .task(id: api.version) { await remote.load() }
         .sheet(isPresented: $inviteOpen) { InviteCodeSheet() }
     }
 
-    private func join(_ h: HouseCard) async {
-        busy = h.id
+    private func join(_ s: Suggestion) async {
+        busy = s.id
         error = nil
         do {
-            let _: ChallengeDetail = try await api.send("/challenges/\(h.id)/join", body: [:])
-            Toaster.shared.show(Toast(emoji: "🙌", title: "You're in \(h.name)", detail: "Log your first one whenever you're ready."))
-            router.home.append(.challenge(h.id))
+            let _: ChallengeDetail = try await api.send("/challenges/\(s.id)/join", body: [:])
+            Toaster.shared.show(Toast(emoji: "🙌", title: "You're in \(s.name)", detail: "Log your first one whenever you're ready."))
+            router.home.append(.challenge(s.id))
         } catch {
             self.error = error.localizedDescription
         }

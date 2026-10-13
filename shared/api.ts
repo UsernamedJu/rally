@@ -67,10 +67,29 @@ export type ChallengeCard = {
   addedBy?: string;
 };
 
+/** A challenge someone in your crew is in, that you could join too. */
+export type Suggestion = { id: string; name: string; type: ChallengeType; targetText: string; friends: Person[]; memberCount: number };
+
 export type HomeData = {
   user: Me;
   crew: (Person & { loggedToday: boolean })[];
   challenges: ChallengeCard[];
+  suggested: Suggestion[];
+};
+
+/** One line of talk in a challenge. */
+export type TalkLine = Person & { lineId: string; text: string; mine: boolean; when: string };
+
+/** Your own days in a challenge, one bar each, and what they add up to. */
+export type Timeline = {
+  unit: string;
+  /** What a day needs to be to stay on pace, when that is a meaningful number. */
+  pace: number | null;
+  days: { date: string; label: string; amount: number; today: boolean; future: boolean }[];
+  trend: 'up' | 'down' | 'flat' | null;
+  trendText: string | null;
+  bestText: string | null;
+  goalText: string;
 };
 
 /** One logged workout, with whatever extra detail its owner chose to add. */
@@ -101,6 +120,8 @@ export type Medal = 'gold' | 'goal';
 export type FriendData = Person & { completed: number; biggestWin: string | null; recent: Workout[] };
 
 export type Standing = Person & {
+  /** Something true and specific about how this person is going, changing as the challenge does. */
+  fact?: string | null;
   rank: number;
   fraction: number;
   percent: number;
@@ -179,6 +200,10 @@ export type ChallengeDetail = {
     medal: Medal | null;
   };
   manage: (Person & { pending: boolean })[];
+  talk: TalkLine[];
+  timeline: Timeline | null;
+  /** Whether the crews of people in it can see and join it. */
+  shared: boolean;
   /** People in your crew who are not in this challenge yet, when you are in it and it is still running. */
   addable: Person[];
 };

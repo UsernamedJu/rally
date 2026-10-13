@@ -24,6 +24,8 @@ struct DebugDemo: View {
     @State private var level = 0.0
     @State private var tick = 0
     @State private var party = 0
+    @State private var backdropStyle = UserDefaults.standard.integer(forKey: "RallyBackdrop")
+    @State private var backdropDark = !DebugDemo.flag("RallyLight")
     @State private var demoDraft: WorkoutDraft = {
         var d = WorkoutDraft()
         d.minutes = 45
@@ -32,7 +34,7 @@ struct DebugDemo: View {
     }()
 
     var body: some View {
-        if Self.flag("RallyDemoFlow") { flow } else if Self.flag("RallyDemoLog") { log } else if Self.flag("RallyDemoWin") { win } else if Self.flag("RallyDemoFun") { fun } else { water }
+        if Self.flag("RallyDemoBackdrop") { backdrops } else if Self.flag("RallyDemoFlow") { flow } else if Self.flag("RallyDemoLog") { log } else if Self.flag("RallyDemoWin") { win } else if Self.flag("RallyDemoFun") { fun } else { water }
     }
 
     /**
@@ -73,6 +75,54 @@ struct DebugDemo: View {
         }
         """
         return try? JSONDecoder().decode(ChallengeDetail.self, from: Data(json.utf8))
+    }
+
+    /**
+     * `-RallyDemo YES -RallyDemoBackdrop YES -RallyBackdrop 1`: a backdrop being considered, behind a page
+     * that looks like Home, so it can be judged before it replaces the real one. 0 is the current backdrop.
+     */
+    private var backdrops: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Metrics.gap * 2) {
+                // Switch between the candidates and light or dark without relaunching.
+                Picker("Backdrop", selection: $backdropStyle) {
+                    Text("Now").tag(0)
+                    Text("Sole").tag(1)
+                    Text("Banner").tag(3)
+                    Text("Rally").tag(4)
+                }
+                .pickerStyle(.segmented)
+                Picker("Appearance", selection: $backdropDark) {
+                    Text("Dark").tag(true)
+                    Text("Light").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: backdropDark) { _, dark in Appearance.apply(dark ? .dark : .light) }
+                Text("Afternoon, Jean. 👋").font(.display)
+                HStack(spacing: Metrics.gap) {
+                    ForEach(["D", "P", "S"], id: \.self) { n in
+                        Circle().fill(Palette.card).frame(width: 56, height: 56).overlay(Text(n).font(.headline))
+                    }
+                    Spacer()
+                }
+                Text("Your challenges").font(.heading)
+                ForEach(["Gym challenge", "Walking challenge"], id: \.self) { name in
+                    HStack(spacing: Metrics.gap) {
+                        EmojiBadge(emoji: name.hasPrefix("Gym") ? "🏋️" : "🚶")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(name).font(.headline)
+                            Text("3 a week").font(.subheadline).foregroundStyle(Palette.stone)
+                        }
+                        Spacer()
+                    }
+                    .padding(Metrics.card)
+                    .background(Palette.card, in: .rect(cornerRadius: Metrics.radius))
+                }
+            }
+            .padding(.horizontal, Metrics.screen)
+            .padding(.top, 8)
+        }
+        .background { CandidateBackdrop(style: backdropStyle) }
     }
 
     /** `-RallyDemo YES -RallyDemoFlow YES`: the logging flow on made-up data, opened at "what did you do" with a trail run picked. */
@@ -145,6 +195,116 @@ struct DebugDemo: View {
                 try? await Task.sleep(for: .seconds(1.5))
                 tick += 1
             }
+        }
+    }
+}
+
+/** Backdrops being tried out. Only the debug page above draws these; the app still uses `WaterBackdrop`. */
+private struct CandidateBackdrop: View {
+    var style: Int
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let dark = scheme == .dark
+        Group {
+            switch style {
+            case 0: WaterBackdrop()
+            case 3: BannerBackdrop(dark: dark)
+            case 4: RallyBackdrop(dark: dark)
+            default:
+                TimelineView(.animation(minimumInterval: 1 / 30)) { ctx in
+                    let t = ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3600)
+                    Rectangle()
+                        .fill(Palette.page)
+                        .visualEffect { [dark] view, proxy in
+                            let size = Shader.Argument.float2(proxy.size), time = Shader.Argument.float(t), tint = Shader.Argument.color(Palette.accent)
+                            return view.colorEffect(ShaderLibrary.sole(size, time, tint, .float(dark ? 0.8 : 0.5)))
+                        }
+                }
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
+/**
+ * Banner: the app's own words, huge and faint, sliding past behind everything like the boards round a
+ * stadium. Two rows, tilted, moving opposite ways.
+ */
+private struct BannerBackdrop: View {
+    var dark: Bool
+    private let rows = ["RALLY  ·  SHOW UP  ·  LOCK IN  ·  ", "ONE MORE  ·  NO DAYS OFF  ·  KEEP GOING  ·  ", "RALLY  ·  TOGETHER  ·  AGAIN  ·  "]
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 60)) { ctx in
+            let t = ctx.date.timeIntervalSinceReferenceDate
+            Canvas { g, size in
+                g.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Palette.page))
+                g.translateBy(x: size.width / 2, y: 0)
+                g.rotate(by: .degrees(-9))
+                for (i, words) in rows.enumerated() {
+                    let filled = i == 1
+                    let text = g.resolve(Text(words + words)
+                        .font(.system(size: 92, weight: .black, design: .rounded).width(.condensed))
+                        .foregroundStyle(Palette.accent.opacity(filled ? (dark ? 0.20 : 0.13) : (dark ? 0.09 : 0.06))))
+                    let width = text.measure(in: CGSize(width: 1e5, height: 200)).width / 2
+                    let speed = (i % 2 == 0 ? 18.0 : -24.0)
+                    var x = (t * speed).truncatingRemainder(dividingBy: width)
+                    if x > 0 { x -= width }
+                    g.draw(text, at: CGPoint(x: x - size.width, y: 90 + Double(i) * 104), anchor: .leading)
+                }
+            }
+            // Fades out down the page so the cards sit on a clean surface.
+            .mask(LinearGradient(colors: [.black, .black, .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.62)))
+            .background(Palette.page)
+        }
+    }
+}
+
+/**
+ * Rally: a point of light knocked back and forth across the top of the page, the way a rally goes in
+ * tennis, leaving the arc of each shot behind it for a moment.
+ */
+private struct RallyBackdrop: View {
+    var dark: Bool
+
+    /** Where the ball is at time `t`: one shot every 1.7 seconds, each landing at a different depth. */
+    private func ball(_ t: Double, in size: CGSize) -> CGPoint {
+        let shot = 1.7
+        let n = floor(t / shot), f = t / shot - n
+        func depth(_ k: Double) -> Double { 0.16 + 0.20 * (sin(k * 2.399) * 0.5 + 0.5) }
+        let leftToRight = Int(n) % 2 == 0
+        let x0 = leftToRight ? 0.06 : 0.94, x1 = leftToRight ? 0.94 : 0.06
+        let y0 = depth(n), y1 = depth(n + 1)
+        let lift = 0.13 + 0.05 * sin(n * 1.3)
+        let x = x0 + (x1 - x0) * f
+        let y = y0 + (y1 - y0) * f - lift * 4 * f * (1 - f)
+        return CGPoint(x: x * size.width, y: y * size.width + 40)
+    }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 60)) { ctx in
+            let t = ctx.date.timeIntervalSinceReferenceDate
+            Canvas { g, size in
+                let strength = dark ? 1.0 : 0.75
+                // The last few shots, fading with age.
+                let steps = 220, span = 5.6
+                for i in 0..<steps {
+                    let age = Double(i) / Double(steps)
+                    let a = ball(t - age * span, in: size), b = ball(t - (age + 1.0 / Double(steps)) * span, in: size)
+                    guard abs(a.x - b.x) < size.width * 0.3 else { continue }
+                    var seg = Path()
+                    seg.move(to: a)
+                    seg.addLine(to: b)
+                    let fade = pow(1 - age, 2.2)
+                    g.stroke(seg, with: .color(Palette.accent.opacity(0.55 * fade * strength)), style: StrokeStyle(lineWidth: 1 + 3.5 * fade, lineCap: .round))
+                }
+                let p = ball(t, in: size)
+                g.fill(Path(ellipseIn: CGRect(x: p.x - 22, y: p.y - 22, width: 44, height: 44)), with: .radialGradient(
+                    Gradient(colors: [Palette.accent.opacity(0.45 * strength), .clear]), center: p, startRadius: 0, endRadius: 22))
+                g.fill(Path(ellipseIn: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10)), with: .color(Palette.accent))
+            }
+            .background(Palette.page)
         }
     }
 }

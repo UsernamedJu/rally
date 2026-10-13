@@ -113,10 +113,65 @@ struct CrewMember: Codable, Hashable, Identifiable {
     var person: Person { Person(id: id, name: name, avatar: avatar, flair: flair) }
 }
 
+/** A challenge someone in your crew is in, that you could join too. */
+struct Suggestion: Codable, Hashable, Identifiable {
+    var id: String
+    var name: String
+    var type: String
+    var targetText: String
+    var friends: [Person]
+    var memberCount: Int
+
+    /** "Julian and Nathan are in" */
+    var whoText: String {
+        let names = friends.map(\.name)
+        switch names.count {
+        case 0: return ""
+        case 1: return "\(names[0]) is in"
+        case 2: return "\(names[0]) and \(names[1]) are in"
+        default: return "\(names[0]), \(names[1]) and \(names.count - 2) more are in"
+        }
+    }
+}
+
+/** One line of talk in a challenge. */
+struct TalkLine: Codable, Hashable, Identifiable {
+    var id: String
+    var name: String
+    var avatar: Int
+    var flair: Flair?
+    var lineId: String
+    var text: String
+    var mine: Bool
+    var when: String
+    var person: Person { Person(id: id, name: name, avatar: avatar, flair: flair) }
+}
+
+/** Your own days in a challenge, one bar each. */
+struct Timeline: Codable, Hashable {
+    struct Day: Codable, Hashable, Identifiable {
+        var date: String
+        var label: String
+        var amount: Double
+        var today: Bool
+        var future: Bool
+        var id: String { date }
+    }
+    var unit: String
+    var pace: Double?
+    var days: [Day]
+    var trend: String?
+    var trendText: String?
+    var bestText: String?
+    var goalText: String
+}
+
 struct HomeData: Codable {
     var user: Me
     var crew: [CrewMember]
     var challenges: [ChallengeCard]
+    /** Missing from servers started before suggestions came from your crew. */
+    var suggested: [Suggestion]?
 }
 
 struct FriendData: Codable {
@@ -180,6 +235,8 @@ struct Standing: Codable, Hashable, Identifiable {
     var isYou: Bool
     var onTheHook: Bool
     var complete: Bool
+    /** Something true and specific about how this person is going. */
+    var fact: String?
 
     var flair: Flair? = nil
     var person: Person { Person(id: id, name: name, avatar: avatar, flair: flair) }
@@ -265,6 +322,10 @@ struct ChallengeDetail: Codable, Hashable, Identifiable {
     var manage: [ManagedPerson]
     /** People in your crew who are not in this challenge yet. Missing from older servers. */
     var addable: [Person]?
+    var talk: [TalkLine]?
+    var timeline: Timeline?
+    /** Whether the crews of people in it can see and join it. */
+    var shared: Bool?
 }
 
 struct CheckinChallenge: Codable, Hashable, Identifiable {

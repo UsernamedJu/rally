@@ -30,6 +30,7 @@ struct CreateView: View {
     @State private var created: (id: String, token: String)?
     @State private var crew: [Person] = []
     @State private var crewPicked: [String] = []
+    @State private var shared = true
 
     private let titles = ["What kind of challenge?", "How much and how long?", "Consequence for last place?", "Invite your crew."]
     private var kind: String { type ?? "custom" }
@@ -63,6 +64,16 @@ struct CreateView: View {
                         ConsequencePicker(value: $consequence, context: "\(spec.name), \(Catalog.targetText(type: kind, target: target, per: per, lengthDays: lengthDays))", type: kind)
                         Text("Your crew votes on this once they're in. No money, nothing mean.").font(.footnote).foregroundStyle(Palette.stone)
                     default:
+                        Toggle(isOn: $shared) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Label(shared ? "Friends of the crew can join" : "Invite only", systemImage: shared ? "person.2.badge.plus" : "lock.fill").font(.label)
+                                Text(shared ? "Friends of anyone in it see it on their Home and can join." : "Only people you invite or add can get in.")
+                                    .font(.footnote).foregroundStyle(Palette.stone)
+                            }
+                        }
+                        .tint(Palette.signal)
+                        .padding(Metrics.card - 4)
+                        .background(Palette.card, in: .rect(cornerRadius: Metrics.radius))
                         if !crew.isEmpty {
                             // People already in your crew go straight in: no link to send, nothing for them to tap.
                             VStack(alignment: .leading, spacing: 8) {
@@ -142,7 +153,7 @@ struct CreateView: View {
     // The challenge is created on the first send (or skip), so closing early leaves nothing behind.
     private func create() async throws -> (id: String, token: String) {
         if let created { return created }
-        var body: [String: Any] = ["type": kind, "target": target, "per": per, "lengthDays": lengthDays]
+        var body: [String: Any] = ["type": kind, "target": target, "per": per, "lengthDays": lengthDays, "shared": shared]
         if !name.trimmed.isEmpty { body["name"] = name.trimmed }
         if !consequence.trimmed.isEmpty { body["consequence"] = consequence.trimmed }
         struct Created: Decodable { var id: String; var token: String }

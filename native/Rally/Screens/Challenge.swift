@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 
 struct ChallengeScreen: View {
     var id: String
@@ -100,6 +101,10 @@ struct ChallengeContent<Footer: View>: View {
                 StepsNote().settles(1)
             }
 
+            if let timeline = detail.timeline, timeline.days.contains(where: { !$0.future }) {
+                TimelineCard(timeline: timeline).flowsIn(1)
+            }
+
             if let result = detail.resultText {
                 Card {
                     if detail.winnerName != nil {
@@ -171,6 +176,10 @@ struct ChallengeContent<Footer: View>: View {
             .padding(.top, Metrics.gap)
             .settles(2)
 
+            if detail.you.member, detail.status != "done", let talk = detail.talk {
+                TalkCard(detail: detail, lines: talk, onChange: onChange).padding(.top, Metrics.gap).flowsIn(2)
+            }
+
             // 3. What it is all for.
             VStack(alignment: .leading, spacing: Metrics.gap) {
                 Text("⚔️ What's at stake").font(.heading).accessibilityLabel("What's at stake")
@@ -227,7 +236,7 @@ struct ChallengeContent<Footer: View>: View {
 
     @ViewBuilder private var consequenceCard: some View {
         Card(tint: true) {
-            Text("🎯 In real life").font(.label).foregroundStyle(Palette.stone).accessibilityLabel("Real-life consequence")
+            Text("🎯 Consequence").font(.label).foregroundStyle(Palette.stone).accessibilityLabel("Consequence")
             if let c = detail.consequence {
                 if c.status == "none" {
                     Text("🤝 Nothing agreed yet")
@@ -373,6 +382,153 @@ private struct StakesCard: View {
     }
 }
 
+/** Your own days in the challenge as bars, the pace to hold, and how today compares with yesterday. */
+private struct TimelineCard: View {
+    var timeline: Timeline
+
+    private var numeric: Bool { timeline.pace != nil }
+
+    var body: some View {
+        Card {
+            HStack(alignment: .firstTextBaseline) {
+                Text("📈 Your timeline").font(.label).foregroundStyle(Palette.stone).accessibilityLabel("Your timeline")
+                Spacer()
+                Text("Goal: \(timeline.goalText)").font(.footnote).foregroundStyle(Palette.stone)
+            }
+            if let text = timeline.trendText {
+                HStack(spacing: 6) {
+                    if let trend = timeline.trend {
+                        Image(systemName: trend == "up" ? "arrow.up.right.circle.fill" : trend == "down" ? "arrow.down.right.circle.fill" : "equal.circle.fill")
+                            .foregroundStyle(trend == "up" ? Palette.done : trend == "down" ? Palette.accent : Palette.stone)
+                    }
+                    Text(text).font(.headline)
+                }
+            }
+            Chart {
+                ForEach(timeline.days) { day in
+                    BarMark(x: .value("Day", day.date), y: .value(timeline.unit, numeric ? day.amount : (day.amount > 0 ? 1 : 0)), width: .ratio(0.62))
+                        .foregroundStyle(day.today ? Palette.accent : Palette.accent.opacity(0.45))
+                        .cornerRadius(3)
+                }
+                if let pace = timeline.pace {
+                    RuleMark(y: .value("Pace", pace))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                        .foregroundStyle(Palette.stone)
+                        .annotation(position: .top, alignment: .trailing) {
+                            Text("\(Catalog.fmt(pace)) a day").font(.caption2).foregroundStyle(Palette.stone)
+                        }
+                }
+            }
+            .chartXAxis {
+                AxisMarks { value in
+                    AxisValueLabel {
+                        if let date = value.as(String.self), let day = timeline.days.first(where: { $0.date == date }) {
+                            Text(day.label).font(.caption2).foregroundStyle(day.today ? Palette.ink : Palette.faint).fontWeight(day.today ? .bold : .regular)
+                        }
+                    }
+                }
+            }
+            .chartYAxis(numeric ? .automatic : .hidden)
+            .chartYScale(domain: .automatic(includesZero: true))
+            .frame(height: numeric ? 130 : 54)
+            if let best = timeline.bestText {
+                Text(best).font(.footnote).foregroundStyle(Palette.stone)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/** The challenge's chat: the last few lines, a few ready-made jabs, and a line to write your own. */
+private struct TalkCard: View {
+    var detail: ChallengeDetail
+    var lines: [TalkLine]
+    var onChange: (ChallengeDetail) -> Void
+    @Environment(API.self) private var api
+    @State private var text = ""
+    @State private var busy = false
+    @State private var error: String?
+    @State private var showAll = false
+
+    private let jabs = ["You're going down 😤", "Catch me if you can 🏃", "Who's buying? 👀", "Nice one 👏", "Where you at? 🦗"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Metrics.gap) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("💬 Chat").font(.heading).accessibilityLabel("Chat")
+                Spacer()
+                if lines.count > 4 {
+                    Button(showAll ? "Show less" : "All \(lines.count)") { withAnimation(Motion.fluid) { showAll.toggle() } }.font(.label)
+                }
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                if lines.isEmpty {
+                    Text("Nobody's said a word yet. Go first.").foregroundStyle(Palette.stone)
+                }
+                ForEach(showAll ? lines : Array(lines.suffix(4)), id: \.lineId) { line in
+                    HStack(alignment: .top, spacing: 10) {
+                        if !line.mine { AvatarView(person: line.person, size: 30) } else { Spacer(minLength: 40) }
+                        VStack(alignment: line.mine ? .trailing : .leading, spacing: 2) {
+                            if !line.mine { Text(line.name).font(.caption.weight(.semibold)).foregroundStyle(Palette.stone) }
+                            Text(line.text)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .foregroundStyle(line.mine ? .white : Palette.ink)
+                                .background(line.mine ? Palette.signal : Palette.inset, in: .rect(cornerRadius: 16))
+                        }
+                        if !line.mine { Spacer(minLength: 40) }
+                    }
+                    .transition(.liquid)
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(jabs, id: \.self) { jab in
+                            Button(jab) { Task { await send(jab) } }
+                                .font(.footnote.weight(.medium))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .foregroundStyle(Palette.ink)
+                                .background(Palette.inset, in: .capsule)
+                        }
+                    }
+                }
+                HStack(spacing: 8) {
+                    TextField("Say something", text: $text, axis: .vertical)
+                        .lineLimit(1...3)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Palette.inset, in: .rect(cornerRadius: 18))
+                    Button { Task { await send(text) } } label: {
+                        Image(systemName: "arrow.up.circle.fill").font(.system(size: 32)).foregroundStyle(text.trimmed.isEmpty ? Palette.faint : Palette.signal)
+                    }
+                    .disabled(text.trimmed.isEmpty || busy)
+                    .accessibilityLabel("Send")
+                }
+                ErrorLine(text: error)
+            }
+            .padding(Metrics.card - 4)
+            .background(Palette.card, in: .rect(cornerRadius: Metrics.radius))
+        }
+        .animation(Motion.fluid, value: lines)
+    }
+
+    private func send(_ words: String) async {
+        let words = String(words.trimmed.prefix(160))
+        guard !words.isEmpty, !busy else { return }
+        busy = true
+        error = nil
+        do {
+            let next: ChallengeDetail = try await api.send("/challenges/\(detail.id)/talk", body: ["text": words])
+            if words == text.trimmed { text = "" }
+            Haptic.tap()
+            onChange(next)
+        } catch {
+            self.error = error.localizedDescription
+        }
+        busy = false
+    }
+}
+
 /** What finishing earns you: the medal, locked until then and struck once it is yours. */
 private struct RewardCard: View {
     var detail: ChallengeDetail
@@ -476,6 +632,15 @@ private struct StandingRow: View {
     var medals = false
     private var medal: String? { medals && (1...3).contains(row.rank) && row.percent > 0 ? ["🥇", "🥈", "🥉"][row.rank - 1] : nil }
 
+    /** The trend a fact describes, as a symbol: rising, falling, steady, or a run of days. */
+    private static func trend(for fact: String) -> (symbol: String, color: Color) {
+        let f = fact.lowercased()
+        if f.hasPrefix("up ") || f.hasPrefix("best day") || f.hasPrefix("first one") { return ("chart.line.uptrend.xyaxis", Palette.done) }
+        if f.hasPrefix("down ") || f.hasPrefix("quiet") || f.hasPrefix("yet to") { return ("chart.line.downtrend.xyaxis", Palette.accent) }
+        if f.contains("in a row") || f.contains("missed a day") { return ("flame.fill", Palette.accent) }
+        return ("chart.line.flattrend.xyaxis", Palette.stone)
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             if let medal {
@@ -488,7 +653,7 @@ private struct StandingRow: View {
                     .frame(width: 26)
             }
             AvatarView(person: row.person, size: 40)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     Text(row.name).font(.label).lineLimit(1)
                     if row.onTheHook {
@@ -502,19 +667,27 @@ private struct StandingRow: View {
                 LiquidBar(fraction: row.fraction, fill: row.complete ? Palette.done : Palette.signal, height: 8)
                 HStack(spacing: 10) {
                     Text(row.label)
+                    Spacer(minLength: 0)
                     if let delta = row.delta {
                         Label("\(delta) this week", systemImage: delta.hasPrefix("-") ? "arrow.down.right" : "arrow.up.right")
                     }
-                    if let goal = row.goalText { Text("Goal: \(goal)") }
                 }
                 .font(.footnote)
                 .foregroundStyle(Palette.stone)
+                if let fact = row.fact {
+                    let trend = Self.trend(for: fact)
+                    Label { Text(fact).foregroundStyle(Palette.stone) } icon: { Image(systemName: trend.symbol).foregroundStyle(trend.color) }
+                        .font(.footnote)
+                        .padding(.top, 2)
+                        .accessibilityLabel(fact)
+                }
             }
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 16)
         .overlay(RoundedRectangle(cornerRadius: Metrics.radius - 4).strokeBorder(row.isYou ? Palette.ink : .clear, lineWidth: 1.5))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Rank \(row.rank). \(row.name)\(row.isYou ? ", you" : ""). \(row.percent) percent. \(row.label).\(row.onTheHook ? " On the hook." : "")")
+        .accessibilityLabel("Rank \(row.rank). \(row.name)\(row.isYou ? ", you" : ""). \(row.percent) percent. \(row.label).\(row.onTheHook ? " On the hook." : "") \(row.fact ?? "")")
     }
 }
 
@@ -650,6 +823,14 @@ private struct ManageSheet: View {
                     Text("Remove someone")
                 } footer: {
                     Text("Your crew gets an alert first. They're removed after a day unless they log.")
+                }
+                Section {
+                    Toggle(isOn: Binding(get: { detail.shared == true }, set: { on in Task { await act("share", "/share", ["shared": on]) } })) {
+                        Label("Friends of the crew can join", systemImage: "person.2.badge.plus")
+                    }
+                    .tint(Palette.signal)
+                } footer: {
+                    Text("When this is on, friends of anyone in the challenge see it on their Home and can join. Off keeps it invite only.")
                 }
                 if let error { Section { ErrorLine(text: error) } }
                 Section {

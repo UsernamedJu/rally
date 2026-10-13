@@ -71,3 +71,31 @@ using namespace metal;
     return position + float2(sin(position.y / 16.0 + time * 11.0) * a,
                              sin(position.x / 22.0 + time * 9.0) * a * 0.5);
 }
+
+// ---------- backdrop candidates (preview only) ----------
+
+// Sole: the chevron tread of a running shoe, pressed into the page. It is nearly invisible until a
+// footfall lands, and then the tread lights up in a ring that spreads and fades.
+[[ stitchable ]] half4 sole(float2 position, half4 color, float2 size, float time, half4 tint, float strength) {
+    float w = max(size.x, 1.0);
+    float2 u = position / 30.0;
+    float zig = abs(fract(u.x) - 0.5);
+    float v = fract(u.y * 0.85 + zig * 1.5 - time * 0.02);
+    float bar = smoothstep(0.28, 0.33, v) * smoothstep(0.72, 0.67, v);
+    float press = 0.0;
+    for (int i = 0; i < 3; i++) {
+        float fi = float(i);
+        float beat = time * 0.16 + fi * 0.37;
+        float phase = fract(beat);
+        float step = floor(beat);
+        // Each footfall lands somewhere new, alternating left and right like a stride.
+        float side = fmod(step + fi, 2.0);
+        float2 c = float2(w * (0.28 + 0.44 * side), w * (0.25 + 0.55 * fract(sin(step * 12.9 + fi * 4.1) * 43758.5)));
+        float r = length(position - c);
+        float ring = exp(-pow((r - phase * w * 0.85) / (w * 0.11), 2.0));
+        press += ring * (1.0 - phase) * (1.0 - phase);
+    }
+    float fade = smoothstep(size.y * 0.72, 0.0, position.y);
+    float a = clamp(bar * (0.10 + press * 0.9) * fade * strength, 0.0, 1.0);
+    return half4(color.rgb * (1.0h - half(a)) + tint.rgb * half(a), color.a);
+}

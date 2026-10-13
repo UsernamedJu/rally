@@ -19,6 +19,13 @@ enum Nudges {
 
     private static var lastHomeNudge = Date.distantPast
 
+    /** Someone in your crew is in a challenge you could join: asked once per challenge. */
+    static func crewJoined(_ home: HomeData, router: Router) {
+        guard Toaster.shared.current == nil, let s = (home.suggested ?? []).first(where: { once("suggest:\($0.id)", days: 3650) }) else { return }
+        Toaster.shared.show(Toast(emoji: Catalog.emoji(s.type), title: "\(s.whoText.replacingOccurrences(of: " is in", with: " is in \(s.name)").replacingOccurrences(of: " are in", with: " are in \(s.name)"))",
+                                  detail: "Want in too?", actionTitle: "Take a look", action: { router.show(challenge: s.id) }, seconds: 8))
+    }
+
     /** A friend put you in a challenge: said once, as soon as Home shows it. */
     static func addedToChallenges(_ home: HomeData, router: Router) {
         for c in home.challenges {
@@ -142,12 +149,12 @@ enum WhatsNew {
     }
 
     /** The build these notes describe. Anyone coming from an older build sees them once. */
-    static let build = 9
+    static let build = 10
     static let notes = [
-        Note(emoji: "🙌", title: "Add friends straight in", text: "Anyone already in your crew can be added to a challenge with one tap. No link to send, nothing for them to open."),
-        Note(emoji: "🏊", title: "52 kinds of workout", text: "Say exactly what you did, and log it the way it's measured: miles for a hike, laps for a swim, rounds for HIIT, holes for golf."),
-        Note(emoji: "⏱️", title: "Active minutes challenges", text: "A new kind of challenge where any workout counts, by how long it took."),
-        Note(emoji: "⚔️", title: "Something at stake", text: "Every challenge has a badge to win and one to avoid, shown on your avatar. There are 17 achievement medals on your Me page too."),
+        Note(emoji: "💬", title: "Chat in every challenge", text: "Talk to your crew right on the challenge page. There are a few ready-made jabs if you're short on words."),
+        Note(emoji: "📈", title: "Your timeline", text: "Every day of a challenge as a bar, the pace you need to hold, and how today compares with yesterday."),
+        Note(emoji: "🔥", title: "A line on every player", text: "The standings now say something about each person: a run of days, a best day, who's up and who's down."),
+        Note(emoji: "👯", title: "See what your crew is in", text: "Home shows challenges your friends are in, so you can jump in too. Whoever starts one chooses whether it's shared."),
     ]
 
     private static let key = "whatsNewSeen"

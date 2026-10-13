@@ -17,7 +17,7 @@ struct RallyApp: App {
                 .onOpenURL { router.open($0) }
                 // Each time Rally comes to the front, today's steps go to any steps challenges.
                 .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await StepSync.shared.sync() } } }
-                .onAppear { Appearance.apply(DebugDemo.flag("RallyDark") ? .dark : AppearanceChoice(rawValue: appearance) ?? Appearance.fallback) }
+                .onAppear { Appearance.apply(DebugDemo.flag("RallyDark") ? .dark : DebugDemo.flag("RallyLight") ? .light : AppearanceChoice(rawValue: appearance) ?? Appearance.fallback) }
                 .onChange(of: appearance) { _, v in Appearance.apply(AppearanceChoice(rawValue: v) ?? Appearance.fallback) }
         }
     }
